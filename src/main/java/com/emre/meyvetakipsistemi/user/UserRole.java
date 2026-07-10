@@ -1,0 +1,10 @@
+package com.emre.meyvetakipsistemi.user;
+
+/*
+    Sistemdeki kullanıcı rollerini temsil eder.
+ */
+public enum UserRole {
+    ADMIN,
+    MAGAZA_PERSONELI,
+    SOFOR
+}
