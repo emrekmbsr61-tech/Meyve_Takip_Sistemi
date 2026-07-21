@@ -1,82 +1,37 @@
 import { useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  SafeAreaView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-
+import { View, Text } from "react-native";
 import { getFruits } from "./api";
 
+// Meyve listesini gösteren ekrandır.
 export default function Fruits() {
   const [fruits, setFruits] = useState([]);
-  const [loading, setLoading] = useState(true);
 
+  // Ekran açılınca backend'den meyve listesini çeker.
   useEffect(() => {
-    // Ekran açılınca meyve listesini getir
     getFruits()
       .then((data) => {
         setFruits(data);
       })
-      .catch(() => {
-        console.log("Meyve listesi alınamadı");
-      })
-      .finally(() => {
-        setLoading(false);
+      .catch((error) => {
+        console.log(error.message);
       });
   }, []);
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" />
-        <Text>Meyveler yükleniyor...</Text>
-      </SafeAreaView>
-    );
-  }
-
   return (
-    <SafeAreaView style={styles.container}>
-      <Text style={styles.title}>Meyve Listesi</Text>
+    <View style={{ padding: 20 }}>
+      <Text style={{ fontSize: 24, marginBottom: 20 }}>Meyve Listesi</Text>
 
-      <FlatList
-        data={fruits}
-        keyExtractor={(item) => item.id.toString()}
-        renderItem={({ item }) => (
-          <View style={styles.card}>
-            <Text style={styles.name}>{item.name}</Text>
-            <Text>Kod: {item.code}</Text>
-            <Text>Birim: {item.unit}</Text>
+      {fruits.length === 0 ? (
+        <Text>Henüz meyve kaydı yok.</Text>
+      ) : (
+        fruits.map((fruit) => (
+          <View key={fruit.id} style={{ marginBottom: 10 }}>
+            <Text>Ad: {fruit.name}</Text>
+            <Text>Kod: {fruit.code}</Text>
+            <Text>Birim: {fruit.unit}</Text>
           </View>
-        )}
-        ListEmptyComponent={<Text>Henüz meyve kaydı yok.</Text>}
-      />
-    </SafeAreaView>
+        ))
+      )}
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 20,
-    marginTop: 40,
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: "bold",
-    marginBottom: 20,
-  },
-  card: {
-    padding: 15,
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 8,
-    marginBottom: 10,
-  },
-  name: {
-    fontSize: 20,
-    fontWeight: "bold",
-  },
-});
