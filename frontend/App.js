@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { StatusBar } from "expo-status-bar";
-import { View, Text, Button } from "react-native";
-
+import { View, Text, Button, ScrollView } from "react-native";
 import Login from "./src/pages/Login";
 import Fruits from "./src/pages/Fruits";
+import NeedLists from "./src/pages/NeedLists";
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -19,6 +19,8 @@ export default function App() {
           <Text>• İhtiyaç listesi oluşturma</Text>
           <Text>• Mevcut ihtiyaç listelerini görüntüleme</Text>
           <Text>• Mağaza görevlerini takip etme</Text>
+
+          <NeedLists currentUser={currentUser} />
 
           <View style={{ marginTop: 20 }}>
             <Fruits />
@@ -65,7 +67,7 @@ export default function App() {
   return (
     <>
       {currentUser ? (
-        <View style={{ flex: 1 }}>
+        <ScrollView style={{ flex: 1 }}>
           <View style={{ padding: 20, borderBottomWidth: 1 }}>
             <Text style={{ fontSize: 20 }}>
               Hoş geldin, {currentUser.fullName}
@@ -79,7 +81,7 @@ export default function App() {
           </View>
 
           {renderRoleScreen()}
-        </View>
+        </ScrollView>
       ) : (
         <Login onLoginSuccess={setCurrentUser} />
       )}

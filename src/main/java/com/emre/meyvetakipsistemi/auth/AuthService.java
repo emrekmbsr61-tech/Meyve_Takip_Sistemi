@@ -1,39 +1,73 @@
-/*
-    Username var mı, şifre dogru mu, giriş başarılı mı
-*/
 package com.emre.meyvetakipsistemi.auth;
 
+import com.emre.meyvetakipsistemi.auditlog.AuditActionType;
+import com.emre.meyvetakipsistemi.auditlog.AuditLogService;
 import com.emre.meyvetakipsistemi.auth.dto.LoginRequest;
 import com.emre.meyvetakipsistemi.auth.dto.LoginResponse;
 import com.emre.meyvetakipsistemi.user.User;
 import com.emre.meyvetakipsistemi.user.UserRepository;
 import org.springframework.stereotype.Service;
 
+import java.util.Optional;
+
 // Login işleminin kontrolünü yapan servis sınıfıdır.
 @Service
 public class AuthService {
 
-    // Kullanıcıyı veritabanında aramak için kullanılır.
     private final UserRepository userRepository;
+    private final AuditLogService auditLogService;
 
-    // Spring, UserRepository nesnesini buradan otomatik verir.
-    public AuthService(UserRepository userRepository) {
+    // Spring gerekli nesneleri buradan otomatik verir.
+    public AuthService(
+            UserRepository userRepository,
+            AuditLogService auditLogService
+    ) {
         this.userRepository = userRepository;
+        this.auditLogService = auditLogService;
     }
 
     // Kullanıcı adı ve şifreyi kontrol eder.
     public LoginResponse login(LoginRequest request) {
 
-        // Username ile users tablosunda kullanıcı aranır.
-        User user = userRepository.findByUsername(request.getUsername())
-                .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı"));
+        Optional<User> optionalUser = userRepository.findByUsername(request.getUsername());
 
-        // Girilen şifre veritabanındaki şifreyle karşılaştırılır.
+        if (optionalUser.isEmpty()) {
+            auditLogService.createLog(
+                    null,
+                    request.getUsername(),
+                    AuditActionType.USER_LOGIN_FAILED,
+                    "User",
+                    null,
+                    request.getUsername() + " kullanıcı adı ile giriş başarısız oldu. Kullanıcı bulunamadı."
+            );
+
+            throw new RuntimeException("Kullanıcı bulunamadı");
+        }
+
+        User user = optionalUser.get();
+
         if (!user.getPassword().equals(request.getPassword())) {
+            auditLogService.createLog(
+                    user.getId(),
+                    user.getFullName(),
+                    AuditActionType.USER_LOGIN_FAILED,
+                    "User",
+                    user.getId(),
+                    user.getFullName() + " giriş yapamadı. Şifre hatalı."
+            );
+
             throw new RuntimeException("Şifre hatalı");
         }
 
-        // Login başarılıysa frontend'e güvenli kullanıcı bilgisi döner.
+        auditLogService.createLog(
+                user.getId(),
+                user.getFullName(),
+                AuditActionType.USER_LOGIN,
+                "User",
+                user.getId(),
+                user.getFullName() + " sisteme giriş yaptı."
+        );
+
         return new LoginResponse(
                 user.getId(),
                 user.getUsername(),

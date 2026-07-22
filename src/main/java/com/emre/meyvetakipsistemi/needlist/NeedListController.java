@@ -1,36 +1,54 @@
 package com.emre.meyvetakipsistemi.needlist;
 
-
-import org.springframework.beans.factory.annotation.Autowired;
+import com.emre.meyvetakipsistemi.needlist.dto.NeedListRequest;
+import com.emre.meyvetakipsistemi.needlist.dto.NeedListResponse;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+// Frontend'den gelen ihtiyaç listesi isteklerini karşılar.
 @RestController
 @RequestMapping("/api/need-lists")
+@CrossOrigin(origins = "http://localhost:8081")
 public class NeedListController {
 
-    @Autowired
-    private NeedListService needListService;
+    private final NeedListService needListService;
 
-    @PostMapping
-    public NeedList createNeedList(@RequestBody NeedList needList){
-        return needListService.createNeedList(needList);
+    // Spring, NeedListService nesnesini buradan otomatik verir.
+    public NeedListController(NeedListService needListService) {
+        this.needListService = needListService;
     }
 
+    // Yeni ihtiyaç listesi oluşturur.
+    @PostMapping
+    public NeedListResponse createNeedList(@RequestBody NeedListRequest request) {
+        return needListService.createNeedList(request);
+    }
+
+    // Tüm ihtiyaç listelerini getirir.
     @GetMapping
-    public List<NeedList> getAllNeedLists() {
+    public List<NeedListResponse> getAllNeedLists() {
         return needListService.getAllNeedLists();
     }
 
+    // ID'ye göre ihtiyaç listesi getirir.
     @GetMapping("/{id}")
-    public NeedList getNeedListById(@PathVariable Long id){
+    public NeedListResponse getNeedListById(@PathVariable Long id) {
         return needListService.getNeedListById(id);
     }
 
-    @GetMapping("/plan/{planId}")
-    public List<NeedList> getNeedListsByPlanId(@PathVariable Long planId) {
-        return needListService.getNeedListsByPlanId(planId);
+    // ID'ye göre ihtiyaç listesini siler.
+    @DeleteMapping("/{id}")
+    public void deleteNeedList(@PathVariable Long id) {
+        needListService.deleteNeedList(id);
     }
 
+    // ID'ye göre ihtiyaç listesini günceller.
+    @PutMapping("/{id}")
+    public NeedListResponse updateNeedList(
+            @PathVariable Long id,
+            @RequestBody NeedListRequest request
+    ) {
+        return needListService.updateNeedList(id, request);
+    }
 }
