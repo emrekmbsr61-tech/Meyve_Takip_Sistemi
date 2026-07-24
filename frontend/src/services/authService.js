@@ -27,11 +27,12 @@ export async function login(username, password) {
     data = responseText;
   }
 
-  // Login başarısızsa hata fırlatır.
+  // Login başarısızsa hata yollar.
   if (!response.ok) {
     throw new Error(data || "Login başarısız");
   }
 
   // Login başarılıysa LoginResponse döner.
-  return data;
+  return data; 
+  
 }

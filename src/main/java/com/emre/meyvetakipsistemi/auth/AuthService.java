@@ -59,6 +59,7 @@ public class AuthService {
             throw new RuntimeException("Şifre hatalı");
         }
 
+        //login başarılıysa sisteme girilir
         auditLogService.createLog(
                 user.getId(),
                 user.getFullName(),
@@ -68,6 +69,7 @@ public class AuthService {
                 user.getFullName() + " sisteme giriş yaptı."
         );
 
+        //kullanıcı bilgilerini frontende gönder
         return new LoginResponse(
                 user.getId(),
                 user.getUsername(),

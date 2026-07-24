@@ -20,7 +20,7 @@ public class User {
     private Long id;
     private String username;
     private String email;
-    private String password;// İleride UserService içinde hashlenerek kaydedilecek.
+    private String password;// UserService içinde hashlenip kaydedildi.
 
     @Enumerated(EnumType.STRING)// Rol bilgisi veritabanına ADMIN, SOFOR gibi yazı olarak kaydedilir.
     private UserRole role;

@@ -18,7 +18,7 @@ export default function Login({ onLoginSuccess }) {
       setLoading(true);
       setMessage("");
 
-      const user = await login(username, password);
+      const user = await login(username, password); //authService.js ten gelir login
 
       setMessage("Giriş başarılı");
       console.log("Giriş yapan kullanıcı:", user);
@@ -62,7 +62,7 @@ export default function Login({ onLoginSuccess }) {
         value={password}
         onChangeText={setPassword}
         placeholder="Şifreni gir"
-        secureTextEntry
+        secureTextEntry //şifreyi gizli göster
         style={{
           borderWidth: 1,
           borderColor: "#999",
