@@ -5,12 +5,18 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { deleteNeedList, getNeedLists, updateNeedList } from "../../services/needListService";
 import { getStoreName } from "../../config/stores";
+import { getUnitLabel } from "../../utils/unit";
 
 const colors = { green: "#2E7D32", dark: "#102318", background: "#F6F8F6", white: "#FFFFFF", border: "#DFE7E0", muted: "#718077", blue: "#2364E8", blueLight: "#EAF1FF", red: "#E53A32" };
 const ITEMS_PER_PAGE = 5;
 
 function formatDate(value) { return value ? new Date(value).toLocaleString("tr-TR", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "Tarih yok"; }
 function cleanQuantity(value) { const compact = value.replace(",", ".").replace(/[^0-9.]/g, ""); const parts = compact.split("."); return parts.length > 2 ? `${parts[0]}.${parts.slice(1).join("")}` : compact; }
+
+// createdDate değerini sıralama için milisaniyeye çevirir. Geçersiz/boşsa 0 döner, bu sayede ekran çökmez.
+function getComparableTime(plan) { if (!plan.createdDate) return 0; const time = new Date(plan.createdDate).getTime(); return Number.isNaN(time) ? 0 : time; }
+// En son oluşturulan plan en üstte gösterilir; createdDate boş/eşitse planId büyük olan önce gelir.
+function comparePlans(a, b) { const timeDiff = getComparableTime(b) - getComparableTime(a); return timeDiff !== 0 ? timeDiff : (b.planId || 0) - (a.planId || 0); }
 
 export default function NeedListList({ currentUser }) {
   const [needLists, setNeedLists] = useState([]);
@@ -28,9 +34,11 @@ export default function NeedListList({ currentUser }) {
   useFocusEffect(useCallback(() => { loadNeedLists(); }, [loadNeedLists]));
 
   const plans = useMemo(() => Object.values(needLists.reduce((all, item) => {
-    if (!all[item.planId]) all[item.planId] = { planId: item.planId, createdDate: item.createdDate, createdByName: item.createdByName, status: item.status, notes: item.notes, items: [] };
-    all[item.planId].items.push(item); return all;
-  }, {})), [needLists]);
+    // planId eksikse kayıtları yanlışlıkla tek grupta birleştirmemek için her birine kendi anahtarı verilir.
+    const groupKey = item.planId !== null && item.planId !== undefined ? item.planId : `missing-${item.id}`;
+    if (!all[groupKey]) all[groupKey] = { planId: item.planId, createdDate: item.createdDate, createdByName: item.createdByName, status: item.status, notes: item.notes, items: [] };
+    all[groupKey].items.push(item); return all;
+  }, {})).sort(comparePlans), [needLists]);
   const totalPages = Math.max(1, Math.ceil(plans.length / ITEMS_PER_PAGE));
   const visiblePlans = plans.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
@@ -50,7 +58,7 @@ export default function NeedListList({ currentUser }) {
       <View style={styles.cardHeader}><View style={{ flex: 1 }}><Text style={styles.storeName}>{getStoreName(plan.planId)}</Text><Text style={styles.planMeta}>Plan #{plan.planId} · {formatDate(plan.createdDate)}</Text></View><View style={styles.statusBadge}><Text style={styles.statusText}>{plan.status === "CREATED" ? "Oluşturuldu" : plan.status}</Text></View></View>
       <View style={styles.personRow}><Ionicons name="person-outline" size={16} color={colors.muted}/><Text style={styles.personText}>{plan.createdByName}</Text><Ionicons name="cube-outline" size={16} color={colors.muted}/><Text style={styles.personText}>{plan.items.length} ürün</Text></View>
       <View style={styles.divider}/>
-      {plan.items.map((item) => <View key={item.id}>{editingItem?.id === item.id ? <View style={styles.editBox}><Text style={styles.editTitle}>{item.fruitName}</Text><TextInput value={editQuantity} onChangeText={(value) => setEditQuantity(cleanQuantity(value))} keyboardType="decimal-pad" style={styles.input}/><TextInput value={editNotes} onChangeText={setEditNotes} placeholder="Not" style={styles.input}/><View style={styles.buttonRow}><Pressable style={styles.saveSmall} onPress={saveEdit}><Text style={styles.smallText}>Kaydet</Text></Pressable><Pressable style={styles.cancelSmall} onPress={() => setEditingItem(null)}><Text style={styles.smallText}>İptal</Text></Pressable></View></View> : <Pressable onPress={() => startEdit(item)} style={styles.itemRow}><View style={styles.dot}/><Text style={styles.itemName}>{item.fruitName}</Text><Text style={styles.itemQuantity}>{item.requiredQuantity} <Text style={styles.itemUnit}>BİRİM</Text></Text></Pressable>}</View>)}
+      {plan.items.map((item) => <View key={item.id}>{editingItem?.id === item.id ? <View style={styles.editBox}><Text style={styles.editTitle}>{item.fruitName}</Text><TextInput value={editQuantity} onChangeText={(value) => setEditQuantity(cleanQuantity(value))} keyboardType="decimal-pad" style={styles.input}/><TextInput value={editNotes} onChangeText={setEditNotes} placeholder="Not" style={styles.input}/><View style={styles.buttonRow}><Pressable style={styles.saveSmall} onPress={saveEdit}><Text style={styles.smallText}>Kaydet</Text></Pressable><Pressable style={styles.cancelSmall} onPress={() => setEditingItem(null)}><Text style={styles.smallText}>İptal</Text></Pressable></View></View> : <Pressable onPress={() => startEdit(item)} style={styles.itemRow}><View style={styles.dot}/><Text style={styles.itemName}>{item.fruitName}</Text><Text style={styles.itemQuantity}>{item.requiredQuantity} <Text style={styles.itemUnit}>{getUnitLabel(item.fruitUnit)}</Text></Text></Pressable>}</View>)}
       {plan.notes ? <View style={styles.note}><Ionicons name="document-text-outline" size={18} color={colors.muted}/><Text style={styles.noteText}>{plan.notes}</Text></View> : null}
       <View style={styles.buttonRow}><Pressable style={styles.editButton} onPress={() => startEdit(plan.items[0])}><Ionicons name="pencil-outline" size={19} color={colors.green}/><Text style={styles.editText}>Düzenle</Text></Pressable><Pressable style={styles.deleteButton} onPress={() => deletePlan(plan)}><Ionicons name="trash-outline" size={19} color={colors.red}/><Text style={styles.deleteText}>Sil</Text></Pressable></View>
     </View>)}

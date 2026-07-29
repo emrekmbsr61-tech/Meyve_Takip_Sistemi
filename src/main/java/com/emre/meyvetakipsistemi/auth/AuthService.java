@@ -148,6 +148,27 @@ public class AuthService {
             throw new RuntimeException("E-posta adresinizi doğrulamanız gerekiyor.");
         }
 
+        /*
+         * E-posta doğrulanmış olsa (ya da eski bir kullanıcı olsa) bile, rolü hâlâ
+         * PENDING ise ADMIN henüz bu kullanıcıya bir rol atamamış demektir; giriş
+         * engellenir. Eski kullanıcıların rolü zaten PENDING olamayacağı için
+         * (hepsi ADMIN/MAGAZA_PERSONELI/MAGAZA_MUDURU/SOFOR ile kayıtlı), bu kontrol
+         * onları etkilemez.
+         */
+        if (user.getRole() == UserRole.PENDING) {
+
+            auditLogService.createLog(
+                    user.getId(),
+                    user.getFullName(),
+                    AuditActionType.USER_LOGIN_FAILED,
+                    "User",
+                    user.getId(),
+                    user.getFullName() + " giriş yapamadı. Yönetici onayı bekleniyor."
+            );
+
+            throw new RuntimeException("Hesabınız yönetici onayı bekliyor.");
+        }
+
         // Login başarılıysa sistem hareketi kaydedilir.
         auditLogService.createLog(
                 user.getId(),
@@ -199,8 +220,13 @@ public class AuthService {
         user.setEmail(request.getEmail());
         user.setPassword(passwordEncoder.encode(request.getPassword()));
 
-        // Rol client'tan gelse bile dikkate alınmaz; her yeni kayıt MAGAZA_PERSONELI olur.
-        user.setRole(UserRole.MAGAZA_PERSONELI);
+        /*
+         * Rol client'tan gelse bile dikkate alınmaz. Her yeni kayıt PENDING (onay
+         * bekliyor) durumunda başlar; gerçek bir operasyonel rol (MAGAZA_PERSONELI,
+         * MAGAZA_MUDURU, SOFOR, ADMIN) yalnızca bir ADMIN tarafından, kullanıcı
+         * yönetimi ekranından atanabilir. Bkz. UserService.assignRole.
+         */
+        user.setRole(UserRole.PENDING);
 
         // Yeni kayıtlarda e-posta doğrulanana kadar isVerified kesin olarak false olur.
         user.setIsVerified(false);
@@ -257,7 +283,7 @@ public class AuthService {
         user.setIsVerified(true);
         userRepository.save(user);
 
-        return "E-posta adresiniz başarıyla doğrulandı. Artık giriş yapabilirsiniz.";
+        return "E-posta adresiniz başarıyla doğrulandı. Giriş yapabilmek için yönetici onayı bekleniyor.";
     }
 
     /*

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -17,6 +17,8 @@ import { getFruits } from "../Fruits/api";
 import { createNeedList } from "../../services/needListService";
 import { stores } from "../../config/stores";
 import { API_BASE_URL } from "../../config/api";
+import { getUnitLabel, requiresWholeNumber, cleanQuantity } from "../../utils/unit";
+import { normalizeSearchText } from "../../utils/search";
 
 const colors = {
   green: "#2E7D32",
@@ -56,69 +58,6 @@ function getImageUrl(imagePath) {
   return `${IMAGE_BASE_URL}${imagePath}`;
 }
 
-// Birim değerini büyük harfe çevirerek karşılaştırmayı kolaylaştırır.
-function normalizeUnit(unit) {
-  return String(unit || "").trim().toUpperCase();
-}
-
-// KG yerine Kilogram, ADET yerine Adet gösterir.
-function getUnitLabel(unit) {
-  switch (normalizeUnit(unit)) {
-    case "KG":
-      return "Kilogram";
-
-    case "ADET":
-      return "Adet";
-
-    case "KASA":
-      return "Kasa";
-
-    case "PAKET":
-      return "Paket";
-
-    case "DEMET":
-      return "Demet";
-
-    default:
-      return unit || "Birim bilgisi yok";
-  }
-}
-
-// Bu birimler küsuratlı sayı kabul etmemelidir.
-function requiresWholeNumber(unit) {
-  const normalizedUnit = normalizeUnit(unit);
-
-  return ["ADET", "KASA", "PAKET", "DEMET"].includes(
-    normalizedUnit
-  );
-}
-
-// Kullanıcının miktar alanına geçersiz karakter yazmasını engeller.
-function cleanQuantity(value, unit) {
-  const normalizedValue = String(value || "").replace(",", ".");
-
-  /*
-    ADET, KASA, PAKET ve DEMET için yalnızca tam sayı kabul edilir.
-
-    Örnek:
-    1.5 yazılırsa 15 olarak değil, nokta silinerek rakamlar kalır.
-    number-pad kullanıldığı için normalde nokta zaten açılmaz.
-  */
-  if (requiresWholeNumber(unit)) {
-    return normalizedValue.replace(/[^0-9]/g, "");
-  }
-
-  // Kilogram için rakam ve bir tane nokta kabul edilir.
-  const onlyNumber = normalizedValue.replace(/[^0-9.]/g, "");
-  const parts = onlyNumber.split(".");
-
-  if (parts.length <= 2) {
-    return onlyNumber;
-  }
-
-  return `${parts[0]}.${parts.slice(1).join("")}`;
-}
-
 export default function NeedListCreate({ currentUser }) {
   // Backend'den alınan bütün meyveler.
   const [fruits, setFruits] = useState([]);
@@ -149,6 +88,9 @@ export default function NeedListCreate({ currentUser }) {
 
   const [fruitPage, setFruitPage] = useState(1);
 
+  // Meyve seçim penceresindeki arama metni.
+  const [fruitSearch, setFruitSearch] = useState("");
+
   // Ekran ilk açıldığında meyveleri backend'den getirir.
   useEffect(() => {
     loadFruits();
@@ -165,14 +107,34 @@ export default function NeedListCreate({ currentUser }) {
     selectedFruitIds.includes(fruit.id)
   );
 
-  // Meyve seçim penceresindeki toplam sayfa sayısı.
+  /*
+    Arama kutusuna yazılan metne göre filtrelenmiş meyve listesi.
+    Ürün adı veya kodu içinde arama, büyük/küçük harfe ve Türkçe
+    karakterlere duyarsız şekilde karşılaştırılır.
+  */
+  const filteredFruits = useMemo(() => {
+    const query = normalizeSearchText(fruitSearch);
+
+    if (!query) {
+      return fruits;
+    }
+
+    return fruits.filter((fruit) => {
+      const name = normalizeSearchText(fruit.name);
+      const code = normalizeSearchText(fruit.code);
+
+      return name.includes(query) || code.includes(query);
+    });
+  }, [fruits, fruitSearch]);
+
+  // Meyve seçim penceresindeki toplam sayfa sayısı (filtrelenmiş listeye göre).
   const totalFruitPages = Math.max(
     1,
-    Math.ceil(fruits.length / FRUITS_PER_PAGE)
+    Math.ceil(filteredFruits.length / FRUITS_PER_PAGE)
   );
 
   // O an açık olan sayfadaki meyveler.
-  const pagedFruits = fruits.slice(
+  const pagedFruits = filteredFruits.slice(
     (fruitPage - 1) * FRUITS_PER_PAGE,
     fruitPage * FRUITS_PER_PAGE
   );
@@ -204,7 +166,20 @@ export default function NeedListCreate({ currentUser }) {
   // Meyve seçim penceresini açar.
   function openFruitModal() {
     setFruitPage(1);
+    setFruitSearch("");
     setFruitModalVisible(true);
+  }
+
+  // Meyve seçim penceresini kapatır ve arama metnini temizler.
+  function closeFruitModal() {
+    setFruitModalVisible(false);
+    setFruitSearch("");
+  }
+
+  // Arama metni değiştikçe listeyi ilk sayfadan göstermeye başlar.
+  function handleFruitSearchChange(value) {
+    setFruitSearch(value);
+    setFruitPage(1);
   }
 
   // Meyveyi seçer veya seçimi kaldırır.
@@ -636,15 +611,11 @@ export default function NeedListCreate({ currentUser }) {
           visible={fruitModalVisible}
           transparent
           animationType="slide"
-          onRequestClose={() =>
-            setFruitModalVisible(false)
-          }
+          onRequestClose={closeFruitModal}
         >
           <Pressable
             style={styles.modalOverlay}
-            onPress={() =>
-              setFruitModalVisible(false)
-            }
+            onPress={closeFruitModal}
           >
             <Pressable
               style={styles.modalBox}
@@ -655,6 +626,14 @@ export default function NeedListCreate({ currentUser }) {
               <Text style={styles.modalTitle}>
                 Meyve Seç
               </Text>
+
+              <TextInput
+                value={fruitSearch}
+                onChangeText={handleFruitSearchChange}
+                placeholder="Ürün adı veya kodu ara..."
+                autoCapitalize="none"
+                style={styles.searchInput}
+              />
 
               <Text style={styles.modalSubtitle}>
                 Sayfa {fruitPage} / {totalFruitPages}
@@ -668,6 +647,10 @@ export default function NeedListCreate({ currentUser }) {
               ) : fruits.length === 0 ? (
                 <Text style={styles.emptyText}>
                   Meyve bulunamadı.
+                </Text>
+              ) : filteredFruits.length === 0 ? (
+                <Text style={styles.emptyText}>
+                  Ürün bulunamadı
                 </Text>
               ) : (
                 <ScrollView
@@ -794,9 +777,7 @@ export default function NeedListCreate({ currentUser }) {
 
               <Pressable
                 style={styles.closeButton}
-                onPress={() =>
-                  setFruitModalVisible(false)
-                }
+                onPress={closeFruitModal}
               >
                 <Text style={styles.closeButtonText}>
                   Tamam
@@ -1098,6 +1079,17 @@ const styles = StyleSheet.create({
   modalSubtitle: {
     color: colors.gray,
     marginBottom: 14,
+  },
+
+  searchInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 12,
+    color: colors.text,
   },
 
   modalItem: {

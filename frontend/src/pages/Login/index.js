@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { View, Text, TextInput, Button, ActivityIndicator } from "react-native";
+import { View, Text, TextInput, Button, ActivityIndicator, Pressable } from "react-native";
 import { login } from "../../services/authService";
 
-export default function Login({ onLoginSuccess }) {
+export default function Login({ onLoginSuccess, onGoToRegister }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
@@ -77,6 +77,14 @@ export default function Login({ onLoginSuccess }) {
       ) : (
         <Button title="Giriş Yap" onPress={handleLogin} />
       )}
+
+      {onGoToRegister ? (
+        <Pressable onPress={onGoToRegister} style={{ marginTop: 24 }}>
+          <Text style={{ color: "#2E7D32", textAlign: "center" }}>
+            Hesabın yok mu? Kayıt ol
+          </Text>
+        </Pressable>
+      ) : null}
 
       <Text style={{ marginTop: 20, color: "red" }}>{message}</Text>
     </View>

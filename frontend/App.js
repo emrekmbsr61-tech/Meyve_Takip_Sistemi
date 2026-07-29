@@ -13,12 +13,15 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
 // Uygulamadaki ekranlarımızı başka dosyalardan çağırıyoruz.
 import Login from "./src/pages/Login";
+import Register from "./src/pages/Register";
+import VerifyEmail from "./src/pages/VerifyEmail";
 import Home from "./src/pages/Home";
 import Fruits from "./src/pages/Fruits";
 import NeedListCreate from "./src/pages/NeedListCreate";
 import NeedListList from "./src/pages/NeedListList";
 import Acceptance from "./src/pages/Acceptance";
 import ActiveTasks from "./src/pages/ActiveTasks";
+import AdminUserApproval from "./src/pages/AdminUserApproval";
 
 
 // Uygulamadaki ekranları bir yığın şeklinde yönetir.
@@ -76,6 +79,14 @@ function AcceptanceScreen(props) {
 
 function ActiveTasksScreen(props) {
   return <ActiveTasks {...props} />;
+}
+
+/*
+  Yönetici (ADMIN) kullanıcı onayları ekranını açar.
+  Hangi kullanıcının işlem yaptığını bilmek için currentUser gönderilir.
+*/
+function AdminUserApprovalScreen({ currentUser }) {
+  return <AdminUserApproval currentUser={currentUser} />;
 }
 
 /*
@@ -189,13 +200,53 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
 
   /*
+    Giriş yapmadan önceki ekranlar arasındaki geçişi (Login/Register/VerifyEmail)
+    currentUser'a benzer şekilde basit bir state ile yönetiyoruz.
+    authScreen: "login" | "register" | "verify"
+  */
+  const [authScreen, setAuthScreen] = useState("login");
+
+  // Register ekranında girilen e-posta, VerifyEmail ekranına buradan aktarılır.
+  const [pendingEmail, setPendingEmail] = useState("");
+
+  /*
     currentUser boşsa kullanıcı giriş yapmamıştır.
-    Bu durumda sadece Login ekranını gösteriyoruz.
+    Bu durumda authScreen'e göre Login, Register veya VerifyEmail ekranını gösteriyoruz.
   */
   if (!currentUser) {
+    if (authScreen === "register") {
+      return (
+        <>
+          <Register
+            onRegisterSuccess={(email) => {
+              setPendingEmail(email);
+              setAuthScreen("verify");
+            }}
+            onGoToLogin={() => setAuthScreen("login")}
+          />
+          <StatusBar style="dark" />
+        </>
+      );
+    }
+
+    if (authScreen === "verify") {
+      return (
+        <>
+          <VerifyEmail
+            email={pendingEmail}
+            onVerified={() => setAuthScreen("login")}
+          />
+          <StatusBar style="dark" />
+        </>
+      );
+    }
+
     return (
       <>
-        <Login onLoginSuccess={setCurrentUser} />
+        <Login
+          onLoginSuccess={setCurrentUser}
+          onGoToRegister={() => setAuthScreen("register")}
+        />
         <StatusBar style="dark" />
       </>
     );
@@ -310,6 +361,19 @@ export default function App() {
           }}
         >
           {() => <FruitsScreen />}
+        </Stack.Screen>
+
+        {/*
+          Ana ekrandaki "Kullanıcı Onayları" kartına basılınca açılır.
+          Bu kart Home ekranında yalnızca ADMIN rolündeki kullanıcıya gösterilir.
+        */}
+        <Stack.Screen
+          name="AdminUserApproval"
+          options={{
+            title: "Kullanıcı Onayları",
+          }}
+        >
+          {() => <AdminUserApprovalScreen currentUser={currentUser} />}
         </Stack.Screen>
       </Stack.Navigator>
 

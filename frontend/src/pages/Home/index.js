@@ -81,6 +81,16 @@ const menuItems = [
   },
 ];
 
+// Bu kart yalnızca ADMIN rolündeki kullanıcılara gösterilir.
+const adminMenuItem = {
+  screen: "AdminUserApproval",
+  title: "Kullanıcı Onayları",
+  description: "Onay bekleyen kullanıcılara rol ata.",
+  icon: "shield-checkmark-outline",
+  iconColor: colors.primaryDark,
+  iconBackground: colors.primaryLight,
+};
+
 function getReadableRole(role) {
   switch (role) {
     case "MAGAZA_PERSONELI":
@@ -105,6 +115,12 @@ export default function Home({ navigation, currentUser, onLogout }) {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
   const readableRole = getReadableRole(currentUser?.role);
+
+  // ADMIN kullanıcısına "Kullanıcı Onayları" kartı ayrıca eklenir.
+  const visibleMenuItems =
+    currentUser?.role === "ADMIN"
+      ? [...menuItems, adminMenuItem]
+      : menuItems;
 
   const closeSettings = () => {
     setSettingsVisible(false);
@@ -168,11 +184,11 @@ export default function Home({ navigation, currentUser, onLogout }) {
         {/* İşlemler başlığı */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>İşlemler</Text>
-          <Text style={styles.sectionCount}>{menuItems.length} işlem</Text>
+          <Text style={styles.sectionCount}>{visibleMenuItems.length} işlem</Text>
         </View>
 
         {/* Menü kartları */}
-        {menuItems.map((item) => (
+        {visibleMenuItems.map((item) => (
           <Pressable
             key={item.screen}
             style={({ pressed }) => [

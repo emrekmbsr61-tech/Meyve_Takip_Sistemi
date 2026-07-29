@@ -1,6 +1,7 @@
 package com.emre.meyvetakipsistemi.user;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import java.util.List;
 import java.util.Optional;
 
 /*
@@ -20,6 +21,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
     boolean existsByUsernameIgnoreCase(String username);
 
     boolean existsByEmailIgnoreCase(String email);
+
+    // Onay bekleyen kullanıcıları (PENDING rolündekileri) listelemek için kullanılır.
+    List<User> findByRole(UserRole role);
 
 
 }
