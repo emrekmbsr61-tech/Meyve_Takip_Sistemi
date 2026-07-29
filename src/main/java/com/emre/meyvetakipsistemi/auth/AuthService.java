@@ -4,13 +4,26 @@ import com.emre.meyvetakipsistemi.auditlog.AuditActionType;
 import com.emre.meyvetakipsistemi.auditlog.AuditLogService;
 import com.emre.meyvetakipsistemi.auth.dto.LoginRequest;
 import com.emre.meyvetakipsistemi.auth.dto.LoginResponse;
+import com.emre.meyvetakipsistemi.auth.dto.RegisterRequest;
+import com.emre.meyvetakipsistemi.auth.dto.RegisterResponse;
+import com.emre.meyvetakipsistemi.auth.dto.ResendVerificationRequest;
+import com.emre.meyvetakipsistemi.auth.dto.VerifyEmailRequest;
+import com.emre.meyvetakipsistemi.mail.EmailService;
 import com.emre.meyvetakipsistemi.user.User;
 import com.emre.meyvetakipsistemi.user.UserRepository;
+import com.emre.meyvetakipsistemi.user.UserRole;
+import com.emre.meyvetakipsistemi.verification.EmailVerificationCode;
+import com.emre.meyvetakipsistemi.verification.EmailVerificationCodeRepository;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.security.SecureRandom;
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 // Login işleminin kontrolünü yapan servis sınıfıdır.
 @Service
@@ -18,15 +31,24 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final AuditLogService auditLogService;
+    private final EmailVerificationCodeRepository emailVerificationCodeRepository;
+    private final EmailService emailService;
     private final PasswordEncoder passwordEncoder;
+
+    // Doğrulama kodunun kaç dakika geçerli olacağını belirler.
+    private static final int VERIFICATION_CODE_VALID_MINUTES = 10;
 
     // Spring gerekli nesneleri buradan otomatik verir.
     public AuthService(
             UserRepository userRepository,
-            AuditLogService auditLogService
+            AuditLogService auditLogService,
+            EmailVerificationCodeRepository emailVerificationCodeRepository,
+            EmailService emailService
     ) {
         this.userRepository = userRepository;
         this.auditLogService = auditLogService;
+        this.emailVerificationCodeRepository = emailVerificationCodeRepository;
+        this.emailService = emailService;
 
         // Şifreleri güvenli şekilde kontrol etmek ve şifrelemek için kullanılır.
         this.passwordEncoder = new BCryptPasswordEncoder();
@@ -104,6 +126,28 @@ public class AuthService {
             throw new RuntimeException("Şifre hatalı");
         }
 
+        /*
+         * Şifre doğru ama hesap henüz e-posta ile doğrulanmamışsa giriş engellenir.
+         * Not: Bu kontrol yalnızca doğrulama akışından geçmiş kullanıcılar için uygulanır
+         * (yani en az bir EmailVerificationCode kaydı olan kullanıcılar). Bu özellik eklenmeden
+         * önce kayıt olmuş eski kullanıcıların hiçbirinde böyle bir kayıt yoktur, bu yüzden
+         * onların girişi bu kontrolden etkilenmez ve bozulmaz.
+         */
+        if (Boolean.FALSE.equals(user.getIsVerified())
+                && emailVerificationCodeRepository.existsByUser(user)) {
+
+            auditLogService.createLog(
+                    user.getId(),
+                    user.getFullName(),
+                    AuditActionType.USER_LOGIN_FAILED,
+                    "User",
+                    user.getId(),
+                    user.getFullName() + " giriş yapamadı. E-posta doğrulanmamış."
+            );
+
+            throw new RuntimeException("E-posta adresinizi doğrulamanız gerekiyor.");
+        }
+
         // Login başarılıysa sistem hareketi kaydedilir.
         auditLogService.createLog(
                 user.getId(),
@@ -122,6 +166,204 @@ public class AuthService {
                 user.getFullName(),
                 user.getRole().name()
         );
+    }
+
+    // E-posta adresinin biçimini kontrol etmek için kullanılır.
+    private static final Pattern EMAIL_PATTERN =
+            Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
+
+    /*
+     * Yeni kullanıcı kaydı oluşturur.
+     * @Transactional: doğrulama e-postası gönderilemezse (EmailService hata fırlatırsa)
+     * hem User hem de EmailVerificationCode kaydı veritabanına hiç yazılmamış gibi
+     * geri alınır (rollback). Böylece mail gitmeyen bir kullanıcı yarım kayıtlı kalmaz.
+     */
+    @Transactional
+    public RegisterResponse register(RegisterRequest request) {
+
+        validateRegisterRequest(request);
+
+        // Kullanıcı adı büyük/küçük harf farkı gözetmeden benzersiz olmalı.
+        if (userRepository.existsByUsernameIgnoreCase(request.getUsername())) {
+            throw new RuntimeException("Bu kullanıcı adı zaten kullanılıyor");
+        }
+
+        // E-posta büyük/küçük harf farkı gözetmeden benzersiz olmalı.
+        if (userRepository.existsByEmailIgnoreCase(request.getEmail())) {
+            throw new RuntimeException("Bu e-posta adresi zaten kullanılıyor");
+        }
+
+        User user = new User();
+        user.setFullName(request.getFullName());
+        user.setUsername(request.getUsername());
+        user.setEmail(request.getEmail());
+        user.setPassword(passwordEncoder.encode(request.getPassword()));
+
+        // Rol client'tan gelse bile dikkate alınmaz; her yeni kayıt MAGAZA_PERSONELI olur.
+        user.setRole(UserRole.MAGAZA_PERSONELI);
+
+        // Yeni kayıtlarda e-posta doğrulanana kadar isVerified kesin olarak false olur.
+        user.setIsVerified(false);
+
+        User savedUser = userRepository.save(user);
+
+        // Kayıt tamamlandıktan sonra e-posta doğrulama kodu üretilip kullanıcıya gönderilir.
+        createAndSendVerificationCode(savedUser);
+
+        return new RegisterResponse(
+                savedUser.getId(),
+                savedUser.getFullName(),
+                savedUser.getUsername(),
+                savedUser.getEmail(),
+                savedUser.getRole().name(),
+                savedUser.getIsVerified(),
+                "Kayıt başarılı. E-posta adresinize gönderilen doğrulama kodunu giriniz."
+        );
+    }
+
+    // Kullanıcının e-postasına gönderilen 6 haneli kod ile doğrulama yapar.
+    public String verifyEmail(VerifyEmailRequest request) {
+
+        if (isBlank(request.getEmail())) {
+            throw new RuntimeException("E-posta boş olamaz");
+        }
+
+        if (isBlank(request.getCode())) {
+            throw new RuntimeException("Doğrulama kodu boş olamaz");
+        }
+
+        User user = userRepository.findByEmailIgnoreCase(request.getEmail())
+                .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı"));
+
+        if (Boolean.TRUE.equals(user.getIsVerified())) {
+            throw new RuntimeException("Bu hesap zaten doğrulanmış");
+        }
+
+        EmailVerificationCode verificationCode = emailVerificationCodeRepository
+                .findFirstByUserAndCodeOrderByCreatedAtDesc(user, request.getCode())
+                .orElseThrow(() -> new RuntimeException("Doğrulama kodu hatalı"));
+
+        if (Boolean.TRUE.equals(verificationCode.getUsed())) {
+            throw new RuntimeException("Bu doğrulama kodu zaten kullanılmış");
+        }
+
+        if (verificationCode.getExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new RuntimeException("Doğrulama kodunun süresi dolmuş");
+        }
+
+        verificationCode.setUsed(true);
+        emailVerificationCodeRepository.save(verificationCode);
+
+        user.setIsVerified(true);
+        userRepository.save(user);
+
+        return "E-posta adresiniz başarıyla doğrulandı. Artık giriş yapabilirsiniz.";
+    }
+
+    /*
+     * Kullanıcının doğrulama kodunu kaybetmesi/süresinin dolması durumunda yeni kod gönderir.
+     * @Transactional: mail gönderimi başarısız olursa hem eski kodların "used=true"
+     * yapılması hem de yeni kod kaydı geri alınır; kullanıcı kullanılamayan bir
+     * kod kalabalığıyla veya sahte bir başarı mesajıyla baş başa kalmaz.
+     */
+    @Transactional
+    public String resendVerification(ResendVerificationRequest request) {
+
+        if (isBlank(request.getEmail())) {
+            throw new RuntimeException("E-posta boş olamaz");
+        }
+
+        User user = userRepository.findByEmailIgnoreCase(request.getEmail())
+                .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı"));
+
+        if (Boolean.TRUE.equals(user.getIsVerified())) {
+            throw new RuntimeException("Bu hesap zaten doğrulanmış");
+        }
+
+        invalidateActiveCodes(user);
+        createAndSendVerificationCode(user);
+
+        return "Yeni doğrulama kodu e-posta adresinize gönderildi.";
+    }
+
+    // Yeni bir 6 haneli kod üretir, kaydeder ve kullanıcıya e-posta ile gönderir.
+    private void createAndSendVerificationCode(User user) {
+
+        String code = generateVerificationCode();
+
+        EmailVerificationCode verificationCode = new EmailVerificationCode();
+        verificationCode.setUser(user);
+        verificationCode.setCode(code);
+        verificationCode.setExpiresAt(LocalDateTime.now().plusMinutes(VERIFICATION_CODE_VALID_MINUTES));
+        verificationCode.setUsed(false);
+
+        emailVerificationCodeRepository.save(verificationCode);
+
+        emailService.sendVerificationCode(user.getEmail(), user.getFullName(), code);
+    }
+
+    // Kullanıcının önceden üretilmiş, henüz kullanılmamış kodlarını geçersiz kılar.
+    private void invalidateActiveCodes(User user) {
+
+        List<EmailVerificationCode> activeCodes =
+                emailVerificationCodeRepository.findByUserAndUsedFalse(user);
+
+        for (EmailVerificationCode activeCode : activeCodes) {
+            activeCode.setUsed(true);
+        }
+
+        emailVerificationCodeRepository.saveAll(activeCodes);
+    }
+
+    // 100000-999999 arasında rastgele, her zaman 6 haneli bir kod üretir.
+    private String generateVerificationCode() {
+        int code = new SecureRandom().nextInt(1_000_000);
+        return String.format("%06d", code);
+    }
+
+    // Register isteğindeki alanları kontrol eder, hatalıysa sade Türkçe mesajla hata fırlatır.
+    private void validateRegisterRequest(RegisterRequest request) {
+
+        if (isBlank(request.getFullName())) {
+            throw new RuntimeException("Ad soyad boş olamaz");
+        }
+
+        if (isBlank(request.getUsername())) {
+            throw new RuntimeException("Kullanıcı adı boş olamaz");
+        }
+
+        if (request.getUsername().contains(" ")) {
+            throw new RuntimeException("Kullanıcı adı boşluk içeremez");
+        }
+
+        if (isBlank(request.getEmail())) {
+            throw new RuntimeException("E-posta boş olamaz");
+        }
+
+        if (!EMAIL_PATTERN.matcher(request.getEmail()).matches()) {
+            throw new RuntimeException("E-posta adresi geçerli biçimde değil");
+        }
+
+        if (isBlank(request.getPassword())) {
+            throw new RuntimeException("Şifre boş olamaz");
+        }
+
+        if (request.getPassword().length() < 6) {
+            throw new RuntimeException("Şifre en az 6 karakter olmalı");
+        }
+
+        if (isBlank(request.getPasswordRepeat())) {
+            throw new RuntimeException("Şifre tekrar alanı boş olamaz");
+        }
+
+        if (!request.getPassword().equals(request.getPasswordRepeat())) {
+            throw new RuntimeException("Şifreler birbiriyle eşleşmiyor");
+        }
+    }
+
+    // Bir metin alanının boş veya sadece boşluklardan oluşup oluşmadığını kontrol eder.
+    private boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
     }
 
     /*

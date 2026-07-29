@@ -6,5 +6,6 @@ package com.emre.meyvetakipsistemi.user;
 public enum UserRole {
     ADMIN,
     MAGAZA_PERSONELI,
+    MAGAZA_MUDURU,
     SOFOR
 }

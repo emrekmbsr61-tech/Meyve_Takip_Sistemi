@@ -31,3 +31,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Proje gereksinim belgeleri yalnızca yerelde kalsın
+docs/
