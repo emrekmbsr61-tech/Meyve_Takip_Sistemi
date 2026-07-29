@@ -9,6 +9,7 @@ import {
 } from "react-native";
 
 import { getFruits } from "./api";
+import { API_SERVER_URL } from "../../config/api";
 
 const colors = {
   orange: "#F97316",
@@ -25,7 +26,7 @@ const colors = {
 const FRUITS_PER_PAGE = 6;
 
 // Android emulator bilgisayardaki backend'e bu adresle ulaşır.
-const IMAGE_BASE_URL = "http://10.0.2.2:8080";
+const IMAGE_BASE_URL = API_SERVER_URL.replace(/\/api\/?$/, "");
 
 function getImageUrl(imagePath) {
   if (!imagePath) {

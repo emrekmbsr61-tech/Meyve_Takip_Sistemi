@@ -1,465 +1,862 @@
 import { useEffect, useState } from "react";
 import {
-  View,
-  Text,
-  TextInput,
+  ActivityIndicator,
+  Image,
+  Keyboard,
+  Modal,
   Pressable,
   ScrollView,
-  ActivityIndicator,
-  Modal,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableWithoutFeedback,
+  View,
 } from "react-native";
 
 import { getFruits } from "../Fruits/api";
 import { createNeedList } from "../../services/needListService";
+import { stores } from "../../config/stores";
+import { API_BASE_URL } from "../../config/api";
 
 const colors = {
-  orange: "#F97316",
-  dark: "#111827",
+  green: "#2E7D32",
+  darkGreen: "#1B5E20",
+  lightGreen: "#EAF5EC",
   white: "#FFFFFF",
-  background: "#F3F4F6",
-  border: "#E5E7EB",
-  text: "#1F2937",
+  background: "#F4F7F4",
+  border: "#DDE7DF",
+  text: "#17211B",
   gray: "#6B7280",
-  green: "#16A34A",
   red: "#DC2626",
 };
 
-const stores = [
-  { id: 1, name: "Merkez Şube", planId: 1 },
-  { id: 2, name: "Kadıköy Şubesi", planId: 2 },
-  { id: 3, name: "Beşiktaş Şubesi", planId: 3 },
-  { id: 4, name: "Üsküdar Şubesi", planId: 4 },
-  { id: 5, name: "Ataşehir Şubesi", planId: 5 },
-  { id: 6, name: "Bakırköy Şubesi", planId: 6 },
-  { id: 7, name: "Şişli Şubesi", planId: 7 },
-  { id: 8, name: "Maltepe Şubesi", planId: 8 },
-  { id: 9, name: "Kartal Şubesi", planId: 9 },
-  { id: 10, name: "Beylikdüzü Şubesi", planId: 10 },
-];
-
 const FRUITS_PER_PAGE = 8;
 
-function cleanQuantity(value) {
-  const normalizedValue = value.replace(",", ".");
+/*
+  API_BASE_URL:
+  http://10.0.2.2:8080/api
+
+  Görsellerin adresi:
+  http://10.0.2.2:8080/fruits/ananas.jpeg
+
+  Bu nedenle sondaki /api kısmını kaldırıyoruz.
+*/
+const IMAGE_BASE_URL = API_BASE_URL.replace(/\/api\/?$/, "");
+
+// Backend'den gelen imagePath değerini tam görsel adresine çevirir.
+function getImageUrl(imagePath) {
+  if (!imagePath) {
+    return null;
+  }
+
+  if (imagePath.startsWith("http")) {
+    return imagePath;
+  }
+
+  return `${IMAGE_BASE_URL}${imagePath}`;
+}
+
+// Birim değerini büyük harfe çevirerek karşılaştırmayı kolaylaştırır.
+function normalizeUnit(unit) {
+  return String(unit || "").trim().toUpperCase();
+}
+
+// KG yerine Kilogram, ADET yerine Adet gösterir.
+function getUnitLabel(unit) {
+  switch (normalizeUnit(unit)) {
+    case "KG":
+      return "Kilogram";
+
+    case "ADET":
+      return "Adet";
+
+    case "KASA":
+      return "Kasa";
+
+    case "PAKET":
+      return "Paket";
+
+    case "DEMET":
+      return "Demet";
+
+    default:
+      return unit || "Birim bilgisi yok";
+  }
+}
+
+// Bu birimler küsuratlı sayı kabul etmemelidir.
+function requiresWholeNumber(unit) {
+  const normalizedUnit = normalizeUnit(unit);
+
+  return ["ADET", "KASA", "PAKET", "DEMET"].includes(
+    normalizedUnit
+  );
+}
+
+// Kullanıcının miktar alanına geçersiz karakter yazmasını engeller.
+function cleanQuantity(value, unit) {
+  const normalizedValue = String(value || "").replace(",", ".");
+
+  /*
+    ADET, KASA, PAKET ve DEMET için yalnızca tam sayı kabul edilir.
+
+    Örnek:
+    1.5 yazılırsa 15 olarak değil, nokta silinerek rakamlar kalır.
+    number-pad kullanıldığı için normalde nokta zaten açılmaz.
+  */
+  if (requiresWholeNumber(unit)) {
+    return normalizedValue.replace(/[^0-9]/g, "");
+  }
+
+  // Kilogram için rakam ve bir tane nokta kabul edilir.
   const onlyNumber = normalizedValue.replace(/[^0-9.]/g, "");
   const parts = onlyNumber.split(".");
 
-  return parts.length > 2
-    ? `${parts[0]}.${parts.slice(1).join("")}`
-    : onlyNumber;
+  if (parts.length <= 2) {
+    return onlyNumber;
+  }
+
+  return `${parts[0]}.${parts.slice(1).join("")}`;
 }
 
 export default function NeedListCreate({ currentUser }) {
+  // Backend'den alınan bütün meyveler.
   const [fruits, setFruits] = useState([]);
+
+  // Seçilen mağazanın frontend id değeri.
   const [selectedStoreId, setSelectedStoreId] = useState(1);
+
+  // Seçilen meyvelerin id listesi.
   const [selectedFruitIds, setSelectedFruitIds] = useState([]);
+
+  // Her meyve için girilen miktarı tutar.
   const [quantities, setQuantities] = useState({});
+
+  // Plan için girilen genel not.
   const [notes, setNotes] = useState("");
+
+  // Başarı veya hata mesajı.
   const [message, setMessage] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const [storeModalVisible, setStoreModalVisible] = useState(false);
-  const [fruitModalVisible, setFruitModalVisible] = useState(false);
+  const [storeModalVisible, setStoreModalVisible] =
+    useState(false);
+
+  const [fruitModalVisible, setFruitModalVisible] =
+    useState(false);
+
   const [fruitPage, setFruitPage] = useState(1);
 
+  // Ekran ilk açıldığında meyveleri backend'den getirir.
   useEffect(() => {
     loadFruits();
   }, []);
 
+  // Seçilen mağazanın bütün bilgisini bulur.
   const selectedStore =
-    stores.find((store) => store.id === selectedStoreId) || stores[0];
+    stores.find((store) => store.id === selectedStoreId) ||
+    stores[0] ||
+    null;
 
+  // Seçilen meyvelerin bütün bilgilerini bulur.
   const selectedFruits = fruits.filter((fruit) =>
     selectedFruitIds.includes(fruit.id)
   );
 
+  // Meyve seçim penceresindeki toplam sayfa sayısı.
   const totalFruitPages = Math.max(
     1,
     Math.ceil(fruits.length / FRUITS_PER_PAGE)
   );
 
+  // O an açık olan sayfadaki meyveler.
   const pagedFruits = fruits.slice(
     (fruitPage - 1) * FRUITS_PER_PAGE,
     fruitPage * FRUITS_PER_PAGE
   );
 
-  const loadFruits = async () => {
+  // Meyveleri backend'den getirir.
+  async function loadFruits() {
     try {
       setLoading(true);
+      setMessage("");
+
       const data = await getFruits();
-      setFruits(data);
+
+      setFruits(Array.isArray(data) ? data : []);
     } catch (error) {
-      setMessage("Meyve listesi alınamadı.");
+      setMessage(
+        error.message || "Meyve listesi alınamadı."
+      );
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const selectStore = (storeId) => {
+  // Mağazayı seçer ve mağaza penceresini kapatır.
+  function selectStore(storeId) {
     setSelectedStoreId(storeId);
     setStoreModalVisible(false);
-  };
+  }
 
-  const openFruitModal = () => {
+  // Meyve seçim penceresini açar.
+  function openFruitModal() {
     setFruitPage(1);
     setFruitModalVisible(true);
-  };
+  }
 
-  const toggleFruit = (fruit) => {
-    const alreadySelected = selectedFruitIds.includes(fruit.id);
+  // Meyveyi seçer veya seçimi kaldırır.
+  function toggleFruit(fruit) {
+    const alreadySelected = selectedFruitIds.includes(
+      fruit.id
+    );
 
     if (alreadySelected) {
-      setSelectedFruitIds(selectedFruitIds.filter((id) => id !== fruit.id));
+      setSelectedFruitIds((current) =>
+        current.filter((id) => id !== fruit.id)
+      );
 
-      const newQuantities = { ...quantities };
-      delete newQuantities[fruit.id];
-      setQuantities(newQuantities);
-    } else {
-      setSelectedFruitIds([...selectedFruitIds, fruit.id]);
-      setQuantities({
-        ...quantities,
-        [fruit.id]: "",
+      setQuantities((current) => {
+        const nextQuantities = { ...current };
+
+        delete nextQuantities[fruit.id];
+
+        return nextQuantities;
       });
-    }
-  };
 
-  const handleQuantityChange = (fruitId, value) => {
-    setQuantities({
-      ...quantities,
-      [fruitId]: cleanQuantity(value),
+      return;
+    }
+
+    setSelectedFruitIds((current) => [
+      ...current,
+      fruit.id,
+    ]);
+
+    setQuantities((current) => ({
+      ...current,
+      [fruit.id]: "",
+    }));
+  }
+
+  // İlgili meyvenin miktar bilgisini günceller.
+  function handleQuantityChange(fruit, value) {
+    setQuantities((current) => ({
+      ...current,
+      [fruit.id]: cleanQuantity(value, fruit.unit),
+    }));
+  }
+
+  // Seçilen meyveyi formdan kaldırır.
+  function removeSelectedFruit(fruitId) {
+    setSelectedFruitIds((current) =>
+      current.filter((id) => id !== fruitId)
+    );
+
+    setQuantities((current) => {
+      const nextQuantities = { ...current };
+
+      delete nextQuantities[fruitId];
+
+      return nextQuantities;
     });
-  };
+  }
 
-  const removeSelectedFruit = (fruitId) => {
-    setSelectedFruitIds(selectedFruitIds.filter((id) => id !== fruitId));
-
-    const newQuantities = { ...quantities };
-    delete newQuantities[fruitId];
-    setQuantities(newQuantities);
-  };
-
-  const handleCreatePlan = async () => {
-    const selectedItems = selectedFruitIds
-      .map((fruitId) => ({
-        fruitId,
-        quantity: quantities[fruitId],
-      }))
-      .filter((item) => Number(item.quantity) > 0);
-
-    if (!selectedStore) {
-      setMessage("Mağaza seçilmelidir.");
-      return;
-    }
-
-    if (selectedItems.length === 0) {
-      setMessage("En az bir meyve seçilip miktar girilmelidir.");
-      return;
-    }
-
+  // İhtiyaç planını backend'e kaydeder.
+  async function handleCreatePlan() {
     try {
-      setSaving(true);
       setMessage("");
+
+      if (!selectedStore) {
+        throw new Error("Mağaza seçilmelidir.");
+      }
+
+      if (selectedFruitIds.length === 0) {
+        throw new Error("En az bir ürün seçilmelidir.");
+      }
+
+      /*
+        Seçilen her meyvenin miktarı kontrol edilir.
+
+        Backend'de her meyve ayrı NeedList kaydıdır.
+        Hepsinde aynı planId kullanıldığı için aynı plan altında görünür.
+      */
+      const selectedItems = selectedFruitIds.map(
+        (fruitId) => {
+          const fruit = fruits.find(
+            (item) => item.id === fruitId
+          );
+
+          const quantityText = quantities[fruitId];
+          const quantity = Number(quantityText);
+
+          if (!fruit) {
+            throw new Error("Seçilen ürün bulunamadı.");
+          }
+
+          if (
+            !quantityText ||
+            !Number.isFinite(quantity) ||
+            quantity <= 0
+          ) {
+            throw new Error(
+              `${fruit.name} için geçerli miktar girilmelidir.`
+            );
+          }
+
+          if (
+            requiresWholeNumber(fruit.unit) &&
+            !Number.isInteger(quantity)
+          ) {
+            throw new Error(
+              `${fruit.name} için yalnızca tam sayı girilebilir.`
+            );
+          }
+
+          return {
+            fruitId: fruit.id,
+            quantity,
+          };
+        }
+      );
+
+      setSaving(true);
 
       await Promise.all(
         selectedItems.map((item) =>
           createNeedList({
             planId: selectedStore.planId,
             fruitId: Number(item.fruitId),
-            requiredQuantity: Number(item.quantity),
+            requiredQuantity: item.quantity,
             createdBy: currentUser.id,
-            notes: notes
-              ? `${selectedStore.name} - ${notes}`
+            notes: notes.trim()
+              ? `${selectedStore.name} - ${notes.trim()}`
               : `${selectedStore.name} için oluşturuldu`,
           })
         )
       );
 
       setMessage("İhtiyaç planı oluşturuldu.");
+
+      // Başarılı işlemden sonra form temizlenir.
       setSelectedFruitIds([]);
       setQuantities({});
       setNotes("");
+
+      Keyboard.dismiss();
     } catch (error) {
-      setMessage(error.message);
+      setMessage(
+        error.message || "İhtiyaç planı oluşturulamadı."
+      );
     } finally {
       setSaving(false);
     }
-  };
+  }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.topCard}>
-        <Text style={styles.pageTitle}>İhtiyaç Oluştur</Text>
-        <Text style={styles.pageDesc}>
-          Mağaza seç, meyveleri belirle ve tek plan altında ihtiyaç oluştur.
-        </Text>
-      </View>
-
-      <Text style={styles.label}>Mağaza</Text>
-
-      <Pressable
-        style={styles.selectorCard}
-        onPress={() => setStoreModalVisible(true)}
-      >
-        <View>
-          <Text style={styles.selectorTitle}>{selectedStore.name}</Text>
-          <Text style={styles.selectorDesc}>Plan ID: {selectedStore.planId}</Text>
-        </View>
-
-        <Text style={styles.selectorArrow}>Değiştir</Text>
-      </Pressable>
-
-      <Text style={styles.label}>Meyveler</Text>
-
-      <Pressable style={styles.selectorCard} onPress={openFruitModal}>
-        <View>
-          <Text style={styles.selectorTitle}>Meyve Seç</Text>
-          <Text style={styles.selectorDesc}>
-            {selectedFruitIds.length === 0
-              ? "Henüz meyve seçilmedi"
-              : `${selectedFruitIds.length} meyve seçildi`}
-          </Text>
-        </View>
-
-        <Text style={styles.selectorArrow}>Seç</Text>
-      </Pressable>
-
-      {selectedFruits.length > 0 && (
-        <View style={styles.selectedBox}>
-          <Text style={styles.sectionTitle}>Seçilen Meyveler</Text>
-
-          {selectedFruits.map((fruit) => (
-            <View key={fruit.id} style={styles.selectedFruitCard}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.fruitName}>{fruit.name}</Text>
-                <Text style={styles.fruitCode}>
-                  {fruit.code} / {fruit.unit}
-                </Text>
-              </View>
-
-              <View style={styles.quantityBox}>
-                <TextInput
-                  value={quantities[fruit.id] || ""}
-                  onChangeText={(value) => handleQuantityChange(fruit.id, value)}
-                  placeholder="0.5"
-                  keyboardType="decimal-pad"
-                  style={styles.quantityInput}
-                />
-
-                <Text style={styles.unitText}>{fruit.unit}</Text>
-              </View>
-
-              <Pressable
-                style={styles.removeButton}
-                onPress={() => removeSelectedFruit(fruit.id)}
-              >
-                <Text style={styles.removeButtonText}>X</Text>
-              </Pressable>
-            </View>
-          ))}
-        </View>
-      )}
-
-      <Text style={styles.label}>Genel Not</Text>
-
-      <TextInput
-        value={notes}
-        onChangeText={setNotes}
-        placeholder="Örn: Bugün acil teslim edilsin"
-        style={styles.noteInput}
-        multiline
-      />
-
-      <Pressable
-        style={[styles.createButton, saving && styles.disabledButton]}
-        onPress={handleCreatePlan}
-        disabled={saving}
-      >
-        <Text style={styles.createButtonText}>
-          {saving ? "Kaydediliyor..." : "İhtiyaç Planını Oluştur"}
-        </Text>
-      </Pressable>
-
-      {message ? (
-        <Text
-          style={[
-            styles.message,
-            message.includes("oluşturuldu") ? styles.success : styles.error,
-          ]}
+    <TouchableWithoutFeedback
+      onPress={Keyboard.dismiss}
+      accessible={false}
+    >
+      <View style={styles.screen}>
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          {message}
-        </Text>
-      ) : null}
-
-      <Modal visible={storeModalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>Mağaza Seç</Text>
-
-            <ScrollView>
-              {stores.map((store) => (
-                <Pressable
-                  key={store.id}
-                  style={[
-                    styles.modalItem,
-                    selectedStoreId === store.id && styles.modalSelectedItem,
-                  ]}
-                  onPress={() => selectStore(store.id)}
-                >
-                  <Text
-                    style={[
-                      styles.modalItemTitle,
-                      selectedStoreId === store.id && styles.modalSelectedText,
-                    ]}
-                  >
-                    {store.name}
-                  </Text>
-
-                  <Text
-                    style={[
-                      styles.modalItemDesc,
-                      selectedStoreId === store.id && styles.modalSelectedText,
-                    ]}
-                  >
-                    Plan ID: {store.planId}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-
-            <Pressable
-              style={styles.closeButton}
-              onPress={() => setStoreModalVisible(false)}
-            >
-              <Text style={styles.closeButtonText}>Kapat</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal visible={fruitModalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>Meyve Seç</Text>
-            <Text style={styles.modalSubTitle}>
-              Sayfa {fruitPage} / {totalFruitPages}
+          {/* Üst başlık kartı */}
+          <View style={styles.topCard}>
+            <Text style={styles.pageTitle}>
+              Yeni İhtiyaç Planı
             </Text>
 
-            {loading ? (
-              <ActivityIndicator />
-            ) : fruits.length === 0 ? (
-              <Text style={styles.emptyText}>Meyve bulunamadı.</Text>
-            ) : (
-              <ScrollView>
-                {pagedFruits.map((fruit) => {
-                  const selected = selectedFruitIds.includes(fruit.id);
+            <Text style={styles.pageDescription}>
+              Mağaza seç, ürünleri belirle ve tek plan
+              altında ihtiyaç oluştur.
+            </Text>
+          </View>
+
+          {/* Mağaza seçimi */}
+          <Text style={styles.label}>Mağaza</Text>
+
+          <Pressable
+            style={styles.selectorCard}
+            onPress={() => setStoreModalVisible(true)}
+          >
+            <View style={styles.selectorTextArea}>
+              <Text style={styles.selectorTitle}>
+                {selectedStore?.name || "Mağaza seç"}
+              </Text>
+
+              <Text style={styles.selectorDescription}>
+                Mağazayı değiştirmek için dokunun
+              </Text>
+            </View>
+
+            <Text style={styles.selectorAction}>
+              Değiştir
+            </Text>
+          </Pressable>
+
+          {/* Ürün başlığı ve ürün ekleme butonu */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.label}>Ürünler</Text>
+
+            <Pressable
+              style={styles.addProductButton}
+              onPress={openFruitModal}
+            >
+              <Text style={styles.addProductText}>
+                + Ürün Ekle
+              </Text>
+            </Pressable>
+          </View>
+
+          {/* Hiç ürün seçilmediyse */}
+          {selectedFruits.length === 0 ? (
+            <Pressable
+              style={styles.emptyProductCard}
+              onPress={openFruitModal}
+            >
+              <Text style={styles.emptyProductTitle}>
+                Henüz ürün seçilmedi
+              </Text>
+
+              <Text style={styles.emptyProductDescription}>
+                Ürün eklemek için buraya dokunun.
+              </Text>
+            </Pressable>
+          ) : null}
+
+          {/* Seçilen ürünler */}
+          {selectedFruits.map((fruit) => {
+            const imageUrl = getImageUrl(
+              fruit.imagePath
+            );
+
+            const unitLabel = getUnitLabel(
+              fruit.unit
+            );
+
+            return (
+              <View
+                key={fruit.id}
+                style={styles.selectedFruitCard}
+              >
+                <View style={styles.selectedFruitHeader}>
+                  {/* Ürün görseli */}
+                  <View style={styles.fruitImageBox}>
+                    {imageUrl ? (
+                      <Image
+                        source={{ uri: imageUrl }}
+                        style={styles.fruitImage}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <Text style={styles.noImageText}>
+                        Görsel yok
+                      </Text>
+                    )}
+                  </View>
+
+                  {/* Ürün adı ve kodu */}
+                  <View style={styles.fruitTextArea}>
+                    <Text style={styles.fruitName}>
+                      {fruit.name}
+                    </Text>
+
+                    <Text style={styles.fruitCode}>
+                      {fruit.code} · {unitLabel}
+                    </Text>
+                  </View>
+
+                  {/* Ürünü kaldırma butonu */}
+                  <Pressable
+                    style={styles.removeButton}
+                    onPress={() =>
+                      removeSelectedFruit(fruit.id)
+                    }
+                  >
+                    <Text style={styles.removeButtonText}>
+                      Sil
+                    </Text>
+                  </Pressable>
+                </View>
+
+                {/* Miktar alanı */}
+                <Text style={styles.quantityLabel}>
+                  Miktar
+                </Text>
+
+                <View style={styles.quantityBox}>
+                  <TextInput
+                    value={quantities[fruit.id] || ""}
+                    onChangeText={(value) =>
+                      handleQuantityChange(fruit, value)
+                    }
+                    placeholder={
+                      requiresWholeNumber(fruit.unit)
+                        ? "1"
+                        : "0,5"
+                    }
+                    keyboardType={
+                      requiresWholeNumber(fruit.unit)
+                        ? "number-pad"
+                        : "decimal-pad"
+                    }
+                    style={styles.quantityInput}
+                  />
+
+                  <Text style={styles.unitText}>
+                    {unitLabel}
+                  </Text>
+                </View>
+              </View>
+            );
+          })}
+
+          {/* Plan notu */}
+          <Text style={styles.label}>Plan Notu</Text>
+
+          <TextInput
+            value={notes}
+            onChangeText={setNotes}
+            placeholder="Teslimat veya ürünlerle ilgili not ekleyin..."
+            style={styles.noteInput}
+            multiline
+          />
+
+          {/* Planı oluşturma butonu */}
+          <Pressable
+            style={[
+              styles.createButton,
+              saving && styles.disabledButton,
+            ]}
+            onPress={handleCreatePlan}
+            disabled={saving}
+          >
+            <Text style={styles.createButtonText}>
+              {saving
+                ? "Kaydediliyor..."
+                : "İhtiyaç Planını Oluştur"}
+            </Text>
+          </Pressable>
+
+          {/* Başarı veya hata mesajı */}
+          {message ? (
+            <Text
+              style={[
+                styles.message,
+                message.includes("oluşturuldu")
+                  ? styles.successMessage
+                  : styles.errorMessage,
+              ]}
+            >
+              {message}
+            </Text>
+          ) : null}
+        </ScrollView>
+
+        {/* Mağaza seçim penceresi */}
+        <Modal
+          visible={storeModalVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() =>
+            setStoreModalVisible(false)
+          }
+        >
+          <Pressable
+            style={styles.modalOverlay}
+            onPress={() =>
+              setStoreModalVisible(false)
+            }
+          >
+            <Pressable
+              style={styles.modalBox}
+              onPress={(event) =>
+                event.stopPropagation()
+              }
+            >
+              <Text style={styles.modalTitle}>
+                Mağaza Seç
+              </Text>
+
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+              >
+                {stores.map((store) => {
+                  const selected =
+                    selectedStoreId === store.id;
 
                   return (
                     <Pressable
-                      key={fruit.id}
+                      key={store.id}
                       style={[
                         styles.modalItem,
-                        selected && styles.modalSelectedItem,
+                        selected &&
+                          styles.selectedModalItem,
                       ]}
-                      onPress={() => toggleFruit(fruit)}
+                      onPress={() =>
+                        selectStore(store.id)
+                      }
                     >
                       <Text
                         style={[
                           styles.modalItemTitle,
-                          selected && styles.modalSelectedText,
+                          selected &&
+                            styles.selectedModalText,
                         ]}
                       >
-                        {selected ? "✓ " : ""}
-                        {fruit.name}
-                      </Text>
-
-                      <Text
-                        style={[
-                          styles.modalItemDesc,
-                          selected && styles.modalSelectedText,
-                        ]}
-                      >
-                        {fruit.code} / {fruit.unit}
+                        {store.name}
                       </Text>
                     </Pressable>
                   );
                 })}
               </ScrollView>
-            )}
 
-            <View style={styles.paginationRow}>
               <Pressable
-                style={[
-                  styles.pageButton,
-                  fruitPage === 1 && styles.disabledPageButton,
-                ]}
-                disabled={fruitPage === 1}
-                onPress={() => setFruitPage(fruitPage - 1)}
+                style={styles.closeButton}
+                onPress={() =>
+                  setStoreModalVisible(false)
+                }
               >
-                <Text style={styles.pageButtonText}>Önceki</Text>
+                <Text style={styles.closeButtonText}>
+                  Kapat
+                </Text>
               </Pressable>
+            </Pressable>
+          </Pressable>
+        </Modal>
 
-              <Text style={styles.pageText}>
-                {fruitPage} / {totalFruitPages}
+        {/* Meyve seçim penceresi */}
+        <Modal
+          visible={fruitModalVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() =>
+            setFruitModalVisible(false)
+          }
+        >
+          <Pressable
+            style={styles.modalOverlay}
+            onPress={() =>
+              setFruitModalVisible(false)
+            }
+          >
+            <Pressable
+              style={styles.modalBox}
+              onPress={(event) =>
+                event.stopPropagation()
+              }
+            >
+              <Text style={styles.modalTitle}>
+                Meyve Seç
               </Text>
 
-              <Pressable
-                style={[
-                  styles.pageButton,
-                  fruitPage === totalFruitPages && styles.disabledPageButton,
-                ]}
-                disabled={fruitPage === totalFruitPages}
-                onPress={() => setFruitPage(fruitPage + 1)}
-              >
-                <Text style={styles.pageButtonText}>Sonraki</Text>
-              </Pressable>
-            </View>
+              <Text style={styles.modalSubtitle}>
+                Sayfa {fruitPage} / {totalFruitPages}
+              </Text>
 
-            <Pressable
-              style={styles.closeButton}
-              onPress={() => setFruitModalVisible(false)}
-            >
-              <Text style={styles.closeButtonText}>Tamam</Text>
+              {loading ? (
+                <ActivityIndicator
+                  size="large"
+                  color={colors.green}
+                />
+              ) : fruits.length === 0 ? (
+                <Text style={styles.emptyText}>
+                  Meyve bulunamadı.
+                </Text>
+              ) : (
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                >
+                  {pagedFruits.map((fruit) => {
+                    const selected =
+                      selectedFruitIds.includes(
+                        fruit.id
+                      );
+
+                    const imageUrl = getImageUrl(
+                      fruit.imagePath
+                    );
+
+                    return (
+                      <Pressable
+                        key={fruit.id}
+                        style={[
+                          styles.modalItem,
+                          styles.modalFruitItem,
+                          selected &&
+                            styles.selectedModalItem,
+                        ]}
+                        onPress={() =>
+                          toggleFruit(fruit)
+                        }
+                      >
+                        {/* Meyve görseli */}
+                        <View
+                          style={
+                            styles.modalFruitImageBox
+                          }
+                        >
+                          {imageUrl ? (
+                            <Image
+                              source={{ uri: imageUrl }}
+                              style={styles.fruitImage}
+                              resizeMode="cover"
+                            />
+                          ) : (
+                            <Text
+                              style={styles.noImageText}
+                            >
+                              Görsel yok
+                            </Text>
+                          )}
+                        </View>
+
+                        {/* Meyve bilgileri */}
+                        <View style={styles.fruitTextArea}>
+                          <Text
+                            style={[
+                              styles.modalItemTitle,
+                              selected &&
+                                styles.selectedModalText,
+                            ]}
+                          >
+                            {selected ? "✓ " : ""}
+                            {fruit.name}
+                          </Text>
+
+                          <Text
+                            style={[
+                              styles.modalItemDescription,
+                              selected &&
+                                styles.selectedModalText,
+                            ]}
+                          >
+                            {fruit.code} ·{" "}
+                            {getUnitLabel(fruit.unit)}
+                          </Text>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              )}
+
+              {/* Sayfalama */}
+              <View style={styles.paginationRow}>
+                <Pressable
+                  style={[
+                    styles.pageButton,
+                    fruitPage === 1 &&
+                      styles.disabledPageButton,
+                  ]}
+                  disabled={fruitPage === 1}
+                  onPress={() =>
+                    setFruitPage(
+                      (current) => current - 1
+                    )
+                  }
+                >
+                  <Text style={styles.pageButtonText}>
+                    Önceki
+                  </Text>
+                </Pressable>
+
+                <Text style={styles.pageText}>
+                  {fruitPage} / {totalFruitPages}
+                </Text>
+
+                <Pressable
+                  style={[
+                    styles.pageButton,
+                    fruitPage === totalFruitPages &&
+                      styles.disabledPageButton,
+                  ]}
+                  disabled={
+                    fruitPage === totalFruitPages
+                  }
+                  onPress={() =>
+                    setFruitPage(
+                      (current) => current + 1
+                    )
+                  }
+                >
+                  <Text style={styles.pageButtonText}>
+                    Sonraki
+                  </Text>
+                </Pressable>
+              </View>
+
+              <Pressable
+                style={styles.closeButton}
+                onPress={() =>
+                  setFruitModalVisible(false)
+                }
+              >
+                <Text style={styles.closeButtonText}>
+                  Tamam
+                </Text>
+              </Pressable>
             </Pressable>
-          </View>
-        </View>
-      </Modal>
-    </ScrollView>
+          </Pressable>
+        </Modal>
+      </View>
+    </TouchableWithoutFeedback>
   );
 }
 
-const styles = {
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+  },
+
   container: {
     flex: 1,
     backgroundColor: colors.background,
   },
+
   content: {
     padding: 16,
-    paddingBottom: 30,
+    paddingBottom: 35,
   },
+
   topCard: {
-    backgroundColor: colors.dark,
+    backgroundColor: colors.darkGreen,
     padding: 20,
     borderRadius: 20,
     marginBottom: 20,
   },
+
   pageTitle: {
     color: colors.white,
     fontSize: 24,
     fontWeight: "bold",
   },
-  pageDesc: {
-    color: "#D1D5DB",
+
+  pageDescription: {
+    color: "#D8EAD9",
     marginTop: 8,
     lineHeight: 20,
   },
+
   label: {
-    fontWeight: "bold",
     color: colors.text,
-    marginBottom: 8,
+    fontWeight: "bold",
     marginTop: 10,
+    marginBottom: 8,
   },
+
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
   selectorCard: {
     backgroundColor: colors.white,
     borderWidth: 1,
@@ -468,165 +865,275 @@ const styles = {
     padding: 16,
     marginBottom: 12,
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    justifyContent: "space-between",
   },
+
+  selectorTextArea: {
+    flex: 1,
+    paddingRight: 12,
+  },
+
   selectorTitle: {
+    color: colors.text,
     fontSize: 17,
     fontWeight: "bold",
-    color: colors.text,
   },
-  selectorDesc: {
+
+  selectorDescription: {
     color: colors.gray,
     marginTop: 4,
   },
-  selectorArrow: {
-    color: colors.orange,
+
+  selectorAction: {
+    color: colors.green,
     fontWeight: "bold",
   },
-  selectedBox: {
-    marginTop: 8,
+
+  addProductButton: {
+    borderWidth: 1,
+    borderColor: colors.green,
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
   },
-  sectionTitle: {
-    fontSize: 18,
+
+  addProductText: {
+    color: colors.green,
     fontWeight: "bold",
+  },
+
+  emptyProductCard: {
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 12,
+    alignItems: "center",
+  },
+
+  emptyProductTitle: {
     color: colors.text,
-    marginBottom: 10,
+    fontWeight: "bold",
   },
+
+  emptyProductDescription: {
+    color: colors.gray,
+    marginTop: 5,
+  },
+
   selectedFruitCard: {
     backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 10,
+    borderRadius: 18,
+    padding: 13,
+    marginBottom: 12,
+  },
+
+  selectedFruitHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
   },
+
+  fruitImageBox: {
+    width: 58,
+    height: 58,
+    borderRadius: 14,
+    overflow: "hidden",
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+
+  modalFruitImageBox: {
+    width: 52,
+    height: 52,
+    borderRadius: 13,
+    overflow: "hidden",
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+
+  fruitImage: {
+    width: "100%",
+    height: "100%",
+  },
+
+  noImageText: {
+    color: colors.gray,
+    fontSize: 9,
+    textAlign: "center",
+  },
+
+  fruitTextArea: {
+    flex: 1,
+  },
+
   fruitName: {
-    fontWeight: "bold",
-    fontSize: 16,
     color: colors.text,
+    fontSize: 16,
+    fontWeight: "bold",
   },
+
   fruitCode: {
     color: colors.gray,
     marginTop: 4,
   },
+
+  removeButton: {
+    borderWidth: 1,
+    borderColor: "#F3B9B9",
+    borderRadius: 11,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+
+  removeButtonText: {
+    color: colors.red,
+    fontWeight: "bold",
+  },
+
+  quantityLabel: {
+    color: colors.text,
+    fontWeight: "700",
+    marginTop: 14,
+    marginBottom: 7,
+  },
+
   quantityBox: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-  },
-  quantityInput: {
-    width: 76,
+    backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
-    padding: 10,
-    textAlign: "center",
-    backgroundColor: "#F9FAFB",
+    borderRadius: 13,
+    paddingHorizontal: 12,
   },
+
+  quantityInput: {
+    flex: 1,
+    color: colors.text,
+    fontWeight: "700",
+    fontSize: 16,
+    paddingVertical: 12,
+  },
+
   unitText: {
     color: colors.gray,
     fontWeight: "bold",
+    fontSize: 12,
   },
-  removeButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.red,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  removeButtonText: {
-    color: colors.white,
-    fontWeight: "bold",
-  },
+
   noteInput: {
-    minHeight: 80,
+    minHeight: 95,
+    backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.white,
     borderRadius: 16,
-    padding: 12,
+    padding: 13,
     textAlignVertical: "top",
   },
+
   createButton: {
-    backgroundColor: colors.orange,
-    padding: 15,
+    backgroundColor: colors.green,
     borderRadius: 16,
+    padding: 16,
     alignItems: "center",
     marginTop: 18,
   },
+
   disabledButton: {
     opacity: 0.6,
   },
+
   createButtonText: {
     color: colors.white,
-    fontWeight: "bold",
     fontSize: 16,
+    fontWeight: "bold",
   },
+
   message: {
     marginTop: 14,
     fontWeight: "bold",
   },
-  success: {
+
+  successMessage: {
     color: colors.green,
   },
-  error: {
+
+  errorMessage: {
     color: colors.red,
   },
-  emptyText: {
-    color: colors.gray,
-    marginBottom: 10,
-  },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(17, 24, 39, 0.45)",
     justifyContent: "flex-end",
   },
+
   modalBox: {
     backgroundColor: colors.white,
     padding: 18,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: "75%",
+    maxHeight: "78%",
   },
+
   modalTitle: {
+    color: colors.text,
     fontSize: 22,
     fontWeight: "bold",
-    color: colors.dark,
     marginBottom: 4,
   },
-  modalSubTitle: {
+
+  modalSubtitle: {
     color: colors.gray,
     marginBottom: 14,
   },
+
   modalItem: {
+    backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 14,
     padding: 14,
     marginBottom: 10,
-    backgroundColor: colors.white,
   },
-  modalSelectedItem: {
-    backgroundColor: colors.orange,
-    borderColor: colors.orange,
+
+  modalFruitItem: {
+    flexDirection: "row",
+    alignItems: "center",
   },
+
+  selectedModalItem: {
+    backgroundColor: colors.green,
+    borderColor: colors.green,
+  },
+
   modalItemTitle: {
+    color: colors.text,
     fontSize: 16,
     fontWeight: "bold",
-    color: colors.text,
   },
-  modalItemDesc: {
+
+  modalItemDescription: {
     color: colors.gray,
     marginTop: 4,
   },
-  modalSelectedText: {
+
+  selectedModalText: {
     color: colors.white,
   },
+
   paginationRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -634,32 +1141,43 @@ const styles = {
     marginTop: 8,
     marginBottom: 8,
   },
+
   pageButton: {
-    backgroundColor: colors.orange,
+    backgroundColor: colors.green,
+    borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 14,
-    borderRadius: 12,
   },
+
   disabledPageButton: {
     opacity: 0.4,
   },
+
   pageButtonText: {
     color: colors.white,
     fontWeight: "bold",
   },
+
   pageText: {
-    fontWeight: "bold",
     color: colors.text,
+    fontWeight: "bold",
   },
+
   closeButton: {
-    backgroundColor: colors.dark,
-    padding: 14,
+    backgroundColor: colors.darkGreen,
     borderRadius: 14,
+    padding: 14,
     alignItems: "center",
     marginTop: 8,
   },
+
   closeButtonText: {
     color: colors.white,
     fontWeight: "bold",
   },
-};
+
+  emptyText: {
+    color: colors.gray,
+    marginBottom: 10,
+  },
+});

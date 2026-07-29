@@ -130,9 +130,9 @@ public class NeedListService {
     // Entity bilgisini frontend'e dönecek response yapısına çevirir.
     private NeedListResponse convertToResponse(NeedList needList) {
 
-        String fruitName = fruitRepository.findById(needList.getFruitId())
-                .map(Fruit::getName)
-                .orElse("Bilinmeyen meyve");
+        Fruit fruit = fruitRepository.findById(needList.getFruitId()).orElse(null);
+        String fruitName = fruit == null ? "Bilinmeyen meyve" : fruit.getName();
+        String fruitCode = fruit == null ? null : fruit.getCode();
 
         String createdByName = getUserFullName(needList.getCreatedBy());
 
@@ -141,6 +141,8 @@ public class NeedListService {
                 needList.getPlanId(),
                 needList.getFruitId(),
                 fruitName,
+                fruitCode,
+                fruit == null ? null : fruit.getUnit(),
                 needList.getRequiredQuantity(),
                 needList.getCreatedBy(),
                 createdByName,

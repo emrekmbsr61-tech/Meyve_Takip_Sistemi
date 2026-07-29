@@ -1,218 +1,245 @@
+// React'te değişebilen kullanıcı bilgisini tutmak için kullanıyoruz.
 import { useState } from "react";
-import { View, Text, Pressable, ScrollView } from "react-native";
+
+// Taslak Mal Kabul ve Aktif Görev ekranlarında kullanıyoruz.
+import { View, Text,TextInput,Pressable, ScrollView,ActivityIndicator,Modal,Image } from "react-native";
+
+// Telefonun üstündeki saat, Wi-Fi ve şarj alanını düzenler.
 import { StatusBar } from "expo-status-bar";
+
+// Uygulamadaki ekran geçişlerini yönetir.
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
+// Uygulamadaki ekranlarımızı başka dosyalardan çağırıyoruz.
 import Login from "./src/pages/Login";
+import Home from "./src/pages/Home";
 import Fruits from "./src/pages/Fruits";
 import NeedListCreate from "./src/pages/NeedListCreate";
 import NeedListList from "./src/pages/NeedListList";
+import Acceptance from "./src/pages/Acceptance";
+import ActiveTasks from "./src/pages/ActiveTasks";
 
+
+// Uygulamadaki ekranları bir yığın şeklinde yönetir.
 const Stack = createNativeStackNavigator();
 
+// App.js içinde kullanılan ortak renkler.
 const colors = {
-  orange: "#F97316",
-  dark: "#111827",
+  primary: "#2E7D32",
+  primaryDark: "#1B5E20",
+  primaryLight: "#EAF5EC",
+
   white: "#FFFFFF",
-  background: "#F3F4F6",
-  border: "#E5E7EB",
-  text: "#1F2937",
+  background: "#F4F7F4",
+  border: "#DDE7DF",
+
+  text: "#17211B",
   gray: "#6B7280",
+
+  orange: "#D97706",
+  orangeLight: "#FFF7E6",
+
+  purple: "#7C3AED",
+  purpleLight: "#F3EEFF",
 };
 
-function HomeScreen({ navigation, currentUser, onLogout }) {
-  return (
-    <ScrollView
-      style={styles.screenBackground}
-      contentContainerStyle={styles.homeContent}
-    >
-      <View style={styles.headerCard}>
-        <Text style={styles.smallText}>Hoş geldin</Text>
-        <Text style={styles.title}>{currentUser.fullName}</Text>
-        <Text style={styles.roleText}>Rol: {currentUser.role}</Text>
-      </View>
-
-      <Text style={styles.sectionTitle}>İşlemler</Text>
-
-      <Pressable
-        style={styles.menuCard}
-        onPress={() => navigation.navigate("NeedListCreate")}
-      >
-        <Text style={styles.menuTitle}>İhtiyaç Oluştur</Text>
-        <Text style={styles.menuDesc}>
-          Mağaza seçerek aynı plan altında birden fazla meyve ihtiyacı oluştur.
-        </Text>
-      </Pressable>
-
-      <Pressable
-        style={styles.menuCard}
-        onPress={() => navigation.navigate("NeedListList")}
-      >
-        <Text style={styles.menuTitle}>Mevcut İhtiyaçlar</Text>
-        <Text style={styles.menuDesc}>
-          Girilen ihtiyaçları görüntüle, güncelle veya sil.
-        </Text>
-      </Pressable>
-
-      <Pressable
-        style={styles.menuCard}
-        onPress={() => navigation.navigate("Acceptance")}
-      >
-        <Text style={styles.menuTitle}>Mal Kabul Sayımı</Text>
-        <Text style={styles.menuDesc}>
-          Kamyondan gelen ürünleri sayarak kabul kaydı oluştur.
-        </Text>
-      </Pressable>
-
-      <Pressable
-        style={styles.menuCard}
-        onPress={() => navigation.navigate("ActiveTasks")}
-      >
-        <Text style={styles.menuTitle}>Aktif Görevler</Text>
-        <Text style={styles.menuDesc}>
-          Atanan görevleri ve kalan süreleri görüntüle.
-        </Text>
-      </Pressable>
-
-      <Pressable
-        style={styles.menuCard}
-        onPress={() => navigation.navigate("Fruits")}
-      >
-        <Text style={styles.menuTitle}>Meyve Listesi</Text>
-        <Text style={styles.menuDesc}>
-          Sistemde kayıtlı meyveleri görüntüle.
-        </Text>
-      </Pressable>
-
-      <Pressable style={styles.logoutButton} onPress={onLogout}>
-        <Text style={styles.logoutText}>Çıkış Yap</Text>
-      </Pressable>
-    </ScrollView>
-  );
-}
-
+/*
+  NeedListCreate ekranını açar.
+  currentUser bilgisini gönderiyoruz çünkü ihtiyaç kaydını
+  hangi kullanıcının oluşturduğunu bilmemiz gerekiyor.
+*/
 function NeedListCreateScreen({ currentUser }) {
   return <NeedListCreate currentUser={currentUser} />;
 }
 
+/*
+  Mevcut ihtiyaçlar ekranını açar.
+  Giriş yapan kullanıcı bilgisini bu ekrana da gönderiyoruz.
+*/
 function NeedListListScreen({ currentUser }) {
   return <NeedListList currentUser={currentUser} />;
 }
 
+/*
+  Meyve listesini açar.
+  Fruits ekranı kendi kaydırma sistemine sahip olduğu için
+  tekrar ScrollView içine koymuyoruz.
+*/
 function FruitsScreen() {
-  return (
-    <ScrollView style={styles.screenBackground}>
-      <Fruits />
-    </ScrollView>
-  );
+  return <Fruits />;
 }
 
-function AcceptanceScreen() {
+function AcceptanceScreen(props) {
+  return <Acceptance {...props} />;
+}
+
+function ActiveTasksScreen(props) {
+  return <ActiveTasks {...props} />;
+}
+
+/*
+  Bu ekran şu an sadece frontend taslağıdır.
+  Daha sonra gerçek Acceptance backend yapısına bağlanacak.
+*/
+function AcceptancePlaceholderScreen() {
   return (
     <ScrollView
       style={styles.screenBackground}
-      contentContainerStyle={styles.homeContent}
+      contentContainerStyle={styles.screenContent}
+      showsVerticalScrollIndicator={false}
     >
       <View style={styles.headerCard}>
-        <Text style={styles.title}>Mal Kabul Sayımı</Text>
-        <Text style={styles.smallText}>
-          Mağaza personeli kamyondan gelen ürünleri sayarak kabul kaydı
-          oluşturacak.
+        <Text style={styles.headerTitle}>Mal Kabul Sayımı</Text>
+
+        <Text style={styles.headerDescription}>
+          Mağazaya teslim edilen ürünlerin gerçek miktarları bu ekranda
+          kaydedilecek.
         </Text>
       </View>
 
-      <View style={styles.menuCard}>
-        <Text style={styles.menuTitle}>Plan Seçimi</Text>
-        <Text style={styles.menuDesc}>
-          Sonraki adımda bu alanda mağazaya gelen aktif teslimat planları
+      <View style={styles.contentCard}>
+        <Text style={styles.cardTitle}>Teslimat Planı</Text>
+
+        <Text style={styles.cardDescription}>
+          Mağazaya gelmiş ve mal kabul işlemi bekleyen teslimat planları burada
           listelenecek.
         </Text>
       </View>
 
-      <View style={styles.menuCard}>
-        <Text style={styles.menuTitle}>Sayım Bilgisi</Text>
-        <Text style={styles.menuDesc}>
-          Ürün adı, sayılan miktar ve ürün durumu bu ekranda girilecek.
+      <View style={styles.contentCard}>
+        <Text style={styles.cardTitle}>Ürün Sayımı</Text>
+
+        <Text style={styles.cardDescription}>
+          Her ürün için beklenen, kabul edilen ve reddedilen miktarlar
+          girilecek.
         </Text>
       </View>
 
       <View style={styles.infoCard}>
-        <Text style={styles.infoTitle}>Sıradaki Backend Adımı</Text>
+        <Text style={styles.infoTitle}>Backend bağlantısı hazırlanacak</Text>
+
         <Text style={styles.infoText}>
-          Acceptance entity, request/response DTO, service ve controller
-          oluşturulacak.
+          Bu ekran Acceptance entity, DTO, repository, service ve controller
+          yapılarıyla backend sistemine bağlanacak.
         </Text>
       </View>
     </ScrollView>
   );
 }
 
-function ActiveTasksScreen() {
+/*
+  Bu ekran da şu an frontend taslağıdır.
+  Daha sonra TaskAssignment backend yapısından gerçek görevleri çekecek.
+*/
+function ActiveTasksPlaceholderScreen() {
   return (
     <ScrollView
       style={styles.screenBackground}
-      contentContainerStyle={styles.homeContent}
+      contentContainerStyle={styles.screenContent}
+      showsVerticalScrollIndicator={false}
     >
       <View style={styles.headerCard}>
-        <Text style={styles.title}>Aktif Görevler</Text>
-        <Text style={styles.smallText}>
-          Mağaza personeline atanmış görevler ve kalan süreler burada
+        <Text style={styles.headerTitle}>Aktif Görevler</Text>
+
+        <Text style={styles.headerDescription}>
+          Mağaza personeline atanmış görevler ve kalan süreleri burada
           gösterilecek.
         </Text>
       </View>
 
       <View style={styles.taskCard}>
-        <Text style={styles.taskBadge}>BEKLEYEN GÖREV</Text>
-        <Text style={styles.menuTitle}>Mal Kabul Görevi</Text>
-        <Text style={styles.menuDesc}>
+        <View style={styles.taskBadge}>
+          <Text style={styles.taskBadgeText}>BEKLEYEN GÖREV</Text>
+        </View>
+
+        <Text style={styles.cardTitle}>Mal Kabul Görevi</Text>
+
+        <Text style={styles.cardDescription}>
           Plan #3 için mal kabul sayımı bekleniyor.
         </Text>
-        <Text style={styles.remainingTime}>Kalan süre: 03:45</Text>
+
+        <View style={styles.timeBox}>
+          <Text style={styles.timeLabel}>Kalan süre</Text>
+          <Text style={styles.timeText}>03 saat 45 dakika</Text>
+        </View>
       </View>
 
       <View style={styles.infoCard}>
-        <Text style={styles.infoTitle}>Sıradaki Backend Adımı</Text>
+        <Text style={styles.infoTitle}>Backend bağlantısı hazırlanacak</Text>
+
         <Text style={styles.infoText}>
-          TaskAssignment yapısı backend tarafında bağlanınca bu ekran gerçek
-          görevleri listeleyecek.
+          TaskAssignment yapısı tamamlandığında kullanıcıya ait gerçek görevler
+          bu ekranda listelenecek.
         </Text>
       </View>
     </ScrollView>
   );
 }
 
+/*
+  Uygulamamızın ana kapısı burasıdır.
+  Kullanıcı giriş yaptı mı diye burada kontrol ediyoruz.
+*/
 export default function App() {
+  /*
+    currentUser = giriş yapan kullanıcı bilgisi.
+    Başlangıçta null çünkü henüz giriş yapan kullanıcı yok.
+  */
   const [currentUser, setCurrentUser] = useState(null);
 
+  /*
+    currentUser boşsa kullanıcı giriş yapmamıştır.
+    Bu durumda sadece Login ekranını gösteriyoruz.
+  */
   if (!currentUser) {
     return (
       <>
         <Login onLoginSuccess={setCurrentUser} />
-        <StatusBar style="auto" />
+        <StatusBar style="dark" />
       </>
     );
   }
 
+  /*
+    currentUser doluysa kullanıcı giriş yapmıştır.
+    Bu durumda navigation sistemini ve uygulama ekranlarını açıyoruz.
+  */
   return (
     <NavigationContainer>
       <Stack.Navigator
         screenOptions={{
+          // Diğer ekranların üst başlık alanı koyu yeşil olur.
           headerStyle: {
-            backgroundColor: colors.dark,
+            backgroundColor: colors.white,
           },
-          headerTintColor: colors.white,
+
+          // Geri butonu ve başlık yazıları beyaz olur.
+          headerTintColor: colors.primaryDark,
+
+          // Başlık yazısı kalın olur.
           headerTitleStyle: {
             fontWeight: "bold",
           },
+
+          // Ekranların genel arka plan rengi.
           contentStyle: {
             backgroundColor: colors.background,
           },
         }}
       >
-        <Stack.Screen name="Home" options={{ title: "Meyve Takip Sistemi" }}>
+        {/*
+          Ana ekranımız ayrı Home dosyasından gelir.
+          Kendi özel tasarımı olduğu için standart navigation başlığını gizliyoruz.
+        */}
+        <Stack.Screen
+          name="Home"
+          options={{
+            headerShown: false,
+          }}
+        >
           {(props) => (
-            <HomeScreen
+            <Home
               {...props}
               currentUser={currentUser}
               onLogout={() => setCurrentUser(null)}
@@ -220,33 +247,68 @@ export default function App() {
           )}
         </Stack.Screen>
 
+        {/*
+          Ana ekrandaki "İhtiyaç Oluştur" kartına basılınca
+          bu ekran açılır.
+        */}
         <Stack.Screen
           name="NeedListCreate"
-          options={{ title: "İhtiyaç Oluştur" }}
+          options={{
+            title: "Yeni İhtiyaç Planı",
+          }}
         >
           {() => <NeedListCreateScreen currentUser={currentUser} />}
         </Stack.Screen>
 
+        {/*
+          Ana ekrandaki "Mevcut İhtiyaçlar" kartına basılınca
+          bu ekran açılır.
+        */}
         <Stack.Screen
           name="NeedListList"
-          options={{ title: "Mevcut İhtiyaçlar" }}
+          options={{
+            title: "Mevcut İhtiyaçlar",
+          }}
         >
           {() => <NeedListListScreen currentUser={currentUser} />}
         </Stack.Screen>
 
+        {/*
+          Ana ekrandaki "Mal Kabul Sayımı" kartına basılınca
+          AcceptanceScreen açılır.
+        */}
         <Stack.Screen
           name="Acceptance"
-          component={AcceptanceScreen}
-          options={{ title: "Mal Kabul Sayımı" }}
-        />
+          options={{
+            title: "Mal Kabul Sayımı",
+          }}
+        >
+          {(props) => <AcceptanceScreen {...props} currentUser={currentUser} />}
+        </Stack.Screen>
 
+        {/*
+          Ana ekrandaki "Aktif Görevler" kartına basılınca
+          ActiveTasksScreen açılır.
+        */}
         <Stack.Screen
           name="ActiveTasks"
-          component={ActiveTasksScreen}
-          options={{ title: "Aktif Görevler" }}
-        />
+          options={{
+            title: "Aktif Görevler",
+          }}
+        >
+          {(props) => <ActiveTasksScreen {...props} currentUser={currentUser} />}
+        </Stack.Screen>
 
-        <Stack.Screen name="Fruits" options={{ title: "Meyve Listesi" }}>
+        {/*
+          Ana ekrandaki "Meyve Listesi" kartına basılınca
+          Fruits ekranı açılır.
+        */}
+        <Stack.Screen
+          name="Fruits"
+          options={{
+            title: "Meyve Listesi",
+          }}
+        >
           {() => <FruitsScreen />}
         </Stack.Screen>
       </Stack.Navigator>
@@ -256,113 +318,126 @@ export default function App() {
   );
 }
 
+/*
+  Buradaki kodlar ekranların çalışma mantığını değil,
+  sadece tasarımını belirler.
+*/
 const styles = {
   screenBackground: {
     flex: 1,
     backgroundColor: colors.background,
   },
-  homeContent: {
+
+  screenContent: {
     padding: 20,
-    paddingBottom: 35,
+    paddingBottom: 40,
   },
+
   headerCard: {
-    backgroundColor: colors.dark,
+    backgroundColor: colors.primaryDark,
     padding: 22,
-    borderRadius: 18,
-    marginBottom: 24,
+    borderRadius: 20,
+    marginBottom: 18,
   },
-  smallText: {
-    color: "#D1D5DB",
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  title: {
+
+  headerTitle: {
     color: colors.white,
     fontSize: 24,
     fontWeight: "bold",
-    marginTop: 6,
   },
-  roleText: {
-    color: colors.orange,
+
+  headerDescription: {
+    color: "#D8EAD9",
+    fontSize: 15,
+    lineHeight: 22,
     marginTop: 8,
-    fontWeight: "600",
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: colors.text,
-    marginBottom: 12,
-  },
-  menuCard: {
+
+  contentCard: {
     backgroundColor: colors.white,
     padding: 18,
-    borderRadius: 16,
-    marginBottom: 14,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: colors.border,
+    marginBottom: 14,
   },
-  menuTitle: {
+
+  cardTitle: {
+    color: colors.text,
     fontSize: 18,
     fontWeight: "bold",
-    color: colors.text,
   },
-  menuDesc: {
+
+  cardDescription: {
     color: colors.gray,
+    fontSize: 15,
+    lineHeight: 21,
     marginTop: 6,
-    lineHeight: 20,
   },
-  logoutButton: {
-    marginTop: 18,
-    backgroundColor: colors.orange,
-    padding: 15,
-    borderRadius: 14,
-    alignItems: "center",
-  },
-  logoutText: {
-    color: colors.white,
-    fontWeight: "bold",
-    fontSize: 16,
-  },
+
   infoCard: {
-    backgroundColor: "#FFF7ED",
-    padding: 16,
-    borderRadius: 16,
+    backgroundColor: colors.primaryLight,
+    padding: 17,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: "#FDBA74",
-    marginTop: 4,
+    borderColor: "#BBD9BF",
+    marginTop: 2,
   },
+
   infoTitle: {
-    color: colors.orange,
-    fontWeight: "bold",
+    color: colors.primaryDark,
     fontSize: 16,
+    fontWeight: "bold",
   },
+
   infoText: {
     color: colors.text,
+    fontSize: 14,
+    lineHeight: 21,
     marginTop: 6,
-    lineHeight: 20,
   },
+
   taskCard: {
     backgroundColor: colors.white,
     padding: 18,
-    borderRadius: 16,
-    marginBottom: 14,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: colors.border,
+    marginBottom: 14,
   },
+
   taskBadge: {
     alignSelf: "flex-start",
-    backgroundColor: "#FFF7ED",
-    color: colors.orange,
-    fontWeight: "bold",
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    marginBottom: 10,
-    fontSize: 12,
+    backgroundColor: colors.purpleLight,
+    paddingVertical: 6,
+    paddingHorizontal: 11,
+    borderRadius: 20,
+    marginBottom: 12,
   },
-  remainingTime: {
-    color: colors.orange,
-    marginTop: 10,
+
+  taskBadgeText: {
+    color: colors.purple,
+    fontSize: 12,
     fontWeight: "bold",
+  },
+
+  timeBox: {
+    backgroundColor: colors.orangeLight,
+    borderRadius: 14,
+    padding: 14,
+    marginTop: 15,
+  },
+
+  timeLabel: {
+    color: colors.orange,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+
+  timeText: {
+    color: colors.orange,
+    fontSize: 17,
+    fontWeight: "bold",
+    marginTop: 3,
   },
 };

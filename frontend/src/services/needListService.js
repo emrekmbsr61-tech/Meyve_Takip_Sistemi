@@ -1,4 +1,4 @@
-const API_BASE_URL = "http://10.0.2.2:8080/api";
+import { API_BASE_URL } from "../config/api";
 
 // Tüm ihtiyaç listelerini backend'den getirir.
 export async function getNeedLists() {

@@ -1,5 +1,5 @@
 // Backend ana adresidir.
-const API_BASE_URL = "http://10.0.2.2:8080/api";
+import { API_BASE_URL } from "../config/api";
 
 // Login isteğini backend'e gönderir.
 export async function login(username, password) {

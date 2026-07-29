@@ -1,6 +1,7 @@
 package com.emre.meyvetakipsistemi.needlist.dto;
 
 import com.emre.meyvetakipsistemi.needlist.NeedListStatus;
+import com.emre.meyvetakipsistemi.fruit.FruitUnit;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -16,6 +17,8 @@ public class NeedListResponse {
 
     private Long fruitId;
     private String fruitName;
+    private String fruitCode;
+    private FruitUnit fruitUnit;
 
     private Double requiredQuantity;
 
