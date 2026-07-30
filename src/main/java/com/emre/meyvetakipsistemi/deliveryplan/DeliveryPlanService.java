@@ -45,5 +45,40 @@ public class DeliveryPlanService {
 
     }
 
+    // Bir planId için mağaza kimliği ve mağaza adını taşır (yalnızca görüntüleme amaçlı).
+    public record PlanStoreInfo(String storeId, String storeName) {
+    }
+
+    /*
+      Bir planId için mağaza bilgisini çözer. Frontend hiçbir zaman mağaza adını
+      planId üzerinden tahmin ETMEZ; bu bilgi her zaman buradan (backend'den) gelir.
+
+      1) Gerçek bir DeliveryPlan kaydı varsa (yeni akış): storeId oradan alınır,
+         adı StoreDirectory'den bulunur.
+      2) Kayıt yoksa (eski/legacy NeedList satırı, DeliveryPlan hiç kullanılmadan
+         önce oluşturulmuş): eski sistemde planId == mağaza id olduğu için aynı
+         değer SADECE GÖRÜNTÜLEME amacıyla legacy eşleme olarak denenir.
+      3) Hiçbir şekilde çözülemezse "Bilinmeyen Mağaza" gibi belirsiz bir metin
+         DÖNMEZ; bunun yerine plan numarasını gösteren açık bir metin döner.
+    */
+    public PlanStoreInfo resolveStoreInfo(Long planId) {
+        if (planId == null) {
+            return new PlanStoreInfo(null, "Mağaza bilgisi yok");
+        }
+
+        return deliveryPlanRepository.findById(planId)
+                .map(plan -> {
+                    String storeId = plan.getStoreId();
+                    String storeName = StoreDirectory.nameOf(storeId);
+                    return new PlanStoreInfo(storeId, storeName != null ? storeName : "Mağaza #" + storeId);
+                })
+                .orElseGet(() -> {
+                    String legacyStoreId = String.valueOf(planId);
+                    String legacyName = StoreDirectory.nameOf(legacyStoreId);
+                    return legacyName != null
+                            ? new PlanStoreInfo(legacyStoreId, legacyName)
+                            : new PlanStoreInfo(null, "Eski Plan #" + planId);
+                });
+    }
 
 }

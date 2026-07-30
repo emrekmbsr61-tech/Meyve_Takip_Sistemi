@@ -1,2 +1,3 @@
 package com.emre.meyvetakipsistemi.task;
-public enum TaskType { ACCEPTANCE }
+// ALIM: müdürün alım yapması gereken görev. TOPLAMA: şoförün toplama yapması gereken görev.
+public enum TaskType { ACCEPTANCE, ALIM, TOPLAMA }

@@ -25,5 +25,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
     // Onay bekleyen kullanıcıları (PENDING rolündekileri) listelemek için kullanılır.
     List<User> findByRole(UserRole role);
 
+    /*
+      Belirli bir roldeki, id'si en küçük kullanıcıyı bulur.
+      Purchase tamamlanınca TOPLAMA görevi atanacak SOFOR'u seçmek için kullanılır:
+      birden fazla SOFOR varsa, görev ataması geçici olarak deterministik şekilde
+      id'si en küçük olana yapılır (bkz. PurchaseService).
+    */
+    Optional<User> findFirstByRoleOrderByIdAsc(UserRole role);
 
 }

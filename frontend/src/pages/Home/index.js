@@ -38,8 +38,13 @@ const colors = {
   redLight: "#FDECEC",
 };
 
-const menuItems = [
-  {
+/*
+  Sistemdeki tüm menü kartlarının TEK tanım kaynağı.
+  Her kart burada yalnızca bir kez tanımlanır; roller aşağıdaki
+  ROLE_MENU_KEYS listesinde hangi kartları görebileceğini belirtir.
+*/
+const ALL_MENU_ITEMS = {
+  NeedListCreate: {
     screen: "NeedListCreate",
     title: "İhtiyaç Oluştur",
     description: "Mağaza için yeni ürün ihtiyacı oluştur.",
@@ -47,7 +52,7 @@ const menuItems = [
     iconColor: colors.primary,
     iconBackground: colors.primaryLight,
   },
-  {
+  NeedListList: {
     screen: "NeedListList",
     title: "Mevcut İhtiyaçlar",
     description: "Oluşturulan ihtiyaçları görüntüle ve düzenle.",
@@ -55,7 +60,7 @@ const menuItems = [
     iconColor: colors.blue,
     iconBackground: colors.blueLight,
   },
-  {
+  Acceptance: {
     screen: "Acceptance",
     title: "Mal Kabul Sayımı",
     description: "Teslim edilen ürünlerin gerçek miktarını kaydet.",
@@ -63,7 +68,7 @@ const menuItems = [
     iconColor: colors.orange,
     iconBackground: colors.orangeLight,
   },
-  {
+  ActiveTasks: {
     screen: "ActiveTasks",
     title: "Aktif Görevler",
     description: "Atanan görevleri ve kalan süreyi görüntüle.",
@@ -71,7 +76,7 @@ const menuItems = [
     iconColor: colors.purple,
     iconBackground: colors.purpleLight,
   },
-  {
+  Fruits: {
     screen: "Fruits",
     title: "Meyve Listesi",
     description: "Sistemde kayıtlı ürünleri görüntüle.",
@@ -79,17 +84,56 @@ const menuItems = [
     iconColor: colors.red,
     iconBackground: colors.redLight,
   },
-];
-
-// Bu kart yalnızca ADMIN rolündeki kullanıcılara gösterilir.
-const adminMenuItem = {
-  screen: "AdminUserApproval",
-  title: "Kullanıcı Onayları",
-  description: "Onay bekleyen kullanıcılara rol ata.",
-  icon: "shield-checkmark-outline",
-  iconColor: colors.primaryDark,
-  iconBackground: colors.primaryLight,
+  AdminUserApproval: {
+    screen: "AdminUserApproval",
+    title: "Kullanıcı Onayları",
+    description: "Onay bekleyen kullanıcılara rol ata.",
+    icon: "shield-checkmark-outline",
+    iconColor: colors.primaryDark,
+    iconBackground: colors.primaryLight,
+  },
+  PurchaseManagement: {
+    screen: "PurchaseManagement",
+    title: "Alım İşlemleri",
+    description: "Bekleyen planlar için tedarikçiden alım kaydı oluştur.",
+    icon: "cart-outline",
+    iconColor: colors.orange,
+    iconBackground: colors.orangeLight,
+  },
 };
+
+/*
+  Her rolün hangi kartları görebileceği tek yerde, anlaşılır şekilde tanımlanır.
+
+  ADMIN: bütün kayıtları İZLEYEBİLİR ama operasyon personeli gibi işlem
+  TAMAMLAYAMAZ. Bu yüzden "İhtiyaç Oluştur" ve "Mal Kabul Sayımı" (aktif işlem
+  ekranları) ADMIN menüsünde YOK; "Mevcut İhtiyaçlar", "Aktif Görevler" ve
+  "Alım İşlemleri" ise salt okunur modda gösterilir (bkz. ilgili ekranlardaki
+  isReadOnly/canManage kontrolleri). "Kullanıcı Onayları" ADMIN'in gerçek
+  yönetim işidir, tam işlevsel kalır.
+
+  MAGAZA_PERSONELI: ihtiyaç oluşturma ve mal kabul akışının tamamına sahiptir.
+  MAGAZA_MUDURU: ihtiyaçları salt okunur görür, alım işlemlerini yapar.
+  SOFOR: henüz kendine özel bir ekranı yok, sadece görevlerini ve ürünleri görür.
+*/
+const ROLE_MENU_KEYS = {
+  ADMIN: [
+    "NeedListList",
+    "ActiveTasks",
+    "PurchaseManagement",
+    "Fruits",
+    "AdminUserApproval",
+  ],
+  MAGAZA_PERSONELI: ["NeedListCreate", "NeedListList", "Acceptance", "ActiveTasks", "Fruits"],
+  MAGAZA_MUDURU: ["NeedListList", "PurchaseManagement", "ActiveTasks", "Fruits"],
+  SOFOR: ["ActiveTasks", "Fruits"],
+};
+
+// Kullanıcının rolüne göre görebileceği kart listesini üretir.
+function getMenuItemsForRole(role) {
+  const keys = ROLE_MENU_KEYS[role] || [];
+  return keys.map((key) => ALL_MENU_ITEMS[key]);
+}
 
 function getReadableRole(role) {
   switch (role) {
@@ -116,11 +160,8 @@ export default function Home({ navigation, currentUser, onLogout }) {
 
   const readableRole = getReadableRole(currentUser?.role);
 
-  // ADMIN kullanıcısına "Kullanıcı Onayları" kartı ayrıca eklenir.
-  const visibleMenuItems =
-    currentUser?.role === "ADMIN"
-      ? [...menuItems, adminMenuItem]
-      : menuItems;
+  // Kullanıcının rolüne göre görebileceği kartlar (bkz. ROLE_MENU_KEYS).
+  const visibleMenuItems = getMenuItemsForRole(currentUser?.role);
 
   const closeSettings = () => {
     setSettingsVisible(false);

@@ -22,6 +22,7 @@ import NeedListList from "./src/pages/NeedListList";
 import Acceptance from "./src/pages/Acceptance";
 import ActiveTasks from "./src/pages/ActiveTasks";
 import AdminUserApproval from "./src/pages/AdminUserApproval";
+import PurchaseManagement from "./src/pages/PurchaseManagement";
 
 
 // Uygulamadaki ekranları bir yığın şeklinde yönetir.
@@ -87,6 +88,14 @@ function ActiveTasksScreen(props) {
 */
 function AdminUserApprovalScreen({ currentUser }) {
   return <AdminUserApproval currentUser={currentUser} />;
+}
+
+/*
+  MAGAZA_MUDURU'nün alım işlemleri ekranını açar.
+  Hangi müdürün işlem yaptığını bilmek için currentUser gönderilir.
+*/
+function PurchaseManagementScreen({ currentUser }) {
+  return <PurchaseManagement currentUser={currentUser} />;
 }
 
 /*
@@ -374,6 +383,19 @@ export default function App() {
           }}
         >
           {() => <AdminUserApprovalScreen currentUser={currentUser} />}
+        </Stack.Screen>
+
+        {/*
+          Ana ekrandaki "Alım İşlemleri" kartına basılınca açılır.
+          Bu kart Home ekranında yalnızca MAGAZA_MUDURU rolündeki kullanıcıya gösterilir.
+        */}
+        <Stack.Screen
+          name="PurchaseManagement"
+          options={{
+            title: "Alım İşlemleri",
+          }}
+        >
+          {() => <PurchaseManagementScreen currentUser={currentUser} />}
         </Stack.Screen>
       </Stack.Navigator>
 

@@ -12,7 +12,6 @@ import { useFocusEffect } from "@react-navigation/native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { getNeedLists } from "../../services/needListService";
-import { getStoreName } from "../../config/stores";
 
 const colors = {
   green: "#2E7D32",
@@ -57,6 +56,9 @@ export default function ActiveTasks({
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
+  // ADMIN tüm planları salt okunur görür; işlem yapamaz (Mal Kabulü Aç gizlenir).
+  const isReadOnly = currentUser.role === "ADMIN";
+
   /*
    * Bu projede mağaza personelinin aktif görevi,
    * henüz mal kabulü tamamlanmamış ihtiyaç planıdır.
@@ -68,10 +70,13 @@ export default function ActiveTasks({
 
       const needLists = await getNeedLists();
 
-      // Sadece giriş yapan kullanıcının açık kayıtları alınır.
+      /*
+        ADMIN tüm kullanıcıların açık kayıtlarını görür (salt okunur).
+        Diğer roller yalnızca kendi oluşturduğu açık kayıtları görür.
+      */
       const openNeeds = needLists.filter(
         (item) =>
-          item.createdBy === currentUser.id &&
+          (isReadOnly || item.createdBy === currentUser.id) &&
           isOpenNeed(item)
       );
 
@@ -85,7 +90,7 @@ export default function ActiveTasks({
         if (!groupedTasks[item.planId]) {
           groupedTasks[item.planId] = {
             planId: item.planId,
-            storeName: getStoreName(item.planId),
+            storeName: item.storeName,
             createdDate: item.createdDate,
             itemCount: 0,
           };
@@ -103,7 +108,7 @@ export default function ActiveTasks({
     } finally {
       setLoading(false);
     }
-  }, [currentUser.id]);
+  }, [currentUser.id, isReadOnly]);
 
   // Ekrana her girildiğinde görevler yeniden alınır.
   useFocusEffect(
@@ -248,20 +253,22 @@ export default function ActiveTasks({
               </View>
             </View>
 
-            <Pressable
-              style={styles.openButton}
-              onPress={() => openTask(task)}
-            >
-              <Text style={styles.openButtonText}>
-                Mal Kabulü Aç
-              </Text>
+            {isReadOnly ? null : (
+              <Pressable
+                style={styles.openButton}
+                onPress={() => openTask(task)}
+              >
+                <Text style={styles.openButtonText}>
+                  Mal Kabulü Aç
+                </Text>
 
-              <Ionicons
-                name="arrow-forward"
-                size={21}
-                color={colors.white}
-              />
-            </Pressable>
+                <Ionicons
+                  name="arrow-forward"
+                  size={21}
+                  color={colors.white}
+                />
+              </Pressable>
+            )}
           </View>
         ))}
     </ScrollView>

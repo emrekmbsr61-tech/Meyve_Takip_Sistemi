@@ -1,7 +1,10 @@
 package com.emre.meyvetakipsistemi.needlist;
 
+import com.emre.meyvetakipsistemi.needlist.dto.NeedListPlanRequest;
 import com.emre.meyvetakipsistemi.needlist.dto.NeedListRequest;
 import com.emre.meyvetakipsistemi.needlist.dto.NeedListResponse;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -20,9 +23,36 @@ public class NeedListController {
     }
 
     // Yeni ihtiyaç listesi oluşturur.
+    // Not: Bu eski endpoint planId'yi client'tan kabul eder, artık YENİ akış için kullanılmamalı.
     @PostMapping
     public NeedListResponse createNeedList(@RequestBody NeedListRequest request) {
         return needListService.createNeedList(request);
+    }
+
+    /*
+      YENİ ve güvenli ihtiyaç planı oluşturma endpoint'i.
+      Aynı transaction içinde önce bir DeliveryPlan oluşturur, planId'yi backend üretir,
+      ardından tüm ürün satırlarını bu planId ile kaydeder. Frontend artık bu endpoint'i
+      kullanmalıdır.
+    */
+    @PostMapping("/plan")
+    public ResponseEntity<?> createNeedListPlan(@RequestBody NeedListPlanRequest request) {
+        try {
+            return ResponseEntity.status(HttpStatus.CREATED).body(needListService.createNeedListPlan(request));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        }
+    }
+
+    // Bir planı (tüm ürünleriyle birlikte) iptal eder. Yalnızca bu planId'ye ait kayıtlar etkilenir.
+    @DeleteMapping("/plan/{planId}")
+    public ResponseEntity<?> cancelNeedListPlan(@PathVariable Long planId, @RequestParam Long userId) {
+        try {
+            needListService.cancelNeedListPlan(planId, userId);
+            return ResponseEntity.ok("Plan iptal edildi");
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        }
     }
 
     // Tüm ihtiyaç listelerini getirir.

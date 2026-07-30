@@ -14,7 +14,7 @@ import {
 } from "react-native";
 
 import { getFruits } from "../Fruits/api";
-import { createNeedList } from "../../services/needListService";
+import { createNeedListPlan } from "../../services/needListService";
 import { stores } from "../../config/stores";
 import { API_BASE_URL } from "../../config/api";
 import { getUnitLabel, requiresWholeNumber, cleanQuantity } from "../../utils/unit";
@@ -238,7 +238,13 @@ export default function NeedListCreate({ currentUser }) {
     });
   }
 
-  // İhtiyaç planını backend'e kaydeder.
+  /*
+    İhtiyaç planını backend'e kaydeder.
+    Tek bir istekle (POST /need-lists/plan) hem yeni bir DeliveryPlan hem de bu
+    plana ait tüm NeedList satırları backend'de, tek transaction içinde oluşturulur.
+    planId burada ASLA üretilmez/gönderilmez — backend üretir. Böylece her yeni plan
+    gerçekten benzersiz bir planId alır (eski "mağaza = sabit planId" hatası düzeldi).
+  */
   async function handleCreatePlan() {
     try {
       setMessage("");
@@ -251,70 +257,47 @@ export default function NeedListCreate({ currentUser }) {
         throw new Error("En az bir ürün seçilmelidir.");
       }
 
-      /*
-        Seçilen her meyvenin miktarı kontrol edilir.
+      // Seçilen her meyvenin miktarı kontrol edilir; her meyve tek bir ürün satırıdır.
+      const items = selectedFruitIds.map((fruitId) => {
+        const fruit = fruits.find((item) => item.id === fruitId);
 
-        Backend'de her meyve ayrı NeedList kaydıdır.
-        Hepsinde aynı planId kullanıldığı için aynı plan altında görünür.
-      */
-      const selectedItems = selectedFruitIds.map(
-        (fruitId) => {
-          const fruit = fruits.find(
-            (item) => item.id === fruitId
-          );
+        const quantityText = quantities[fruitId];
+        const quantity = Number(quantityText);
 
-          const quantityText = quantities[fruitId];
-          const quantity = Number(quantityText);
-
-          if (!fruit) {
-            throw new Error("Seçilen ürün bulunamadı.");
-          }
-
-          if (
-            !quantityText ||
-            !Number.isFinite(quantity) ||
-            quantity <= 0
-          ) {
-            throw new Error(
-              `${fruit.name} için geçerli miktar girilmelidir.`
-            );
-          }
-
-          if (
-            requiresWholeNumber(fruit.unit) &&
-            !Number.isInteger(quantity)
-          ) {
-            throw new Error(
-              `${fruit.name} için yalnızca tam sayı girilebilir.`
-            );
-          }
-
-          return {
-            fruitId: fruit.id,
-            quantity,
-          };
+        if (!fruit) {
+          throw new Error("Seçilen ürün bulunamadı.");
         }
-      );
+
+        if (!quantityText || !Number.isFinite(quantity) || quantity <= 0) {
+          throw new Error(
+            `${fruit.name} için geçerli miktar girilmelidir.`
+          );
+        }
+
+        if (requiresWholeNumber(fruit.unit) && !Number.isInteger(quantity)) {
+          throw new Error(
+            `${fruit.name} için yalnızca tam sayı girilebilir.`
+          );
+        }
+
+        return {
+          fruitId: Number(fruit.id),
+          requiredQuantity: quantity,
+        };
+      });
 
       setSaving(true);
 
-      await Promise.all(
-        selectedItems.map((item) =>
-          createNeedList({
-            planId: selectedStore.planId,
-            fruitId: Number(item.fruitId),
-            requiredQuantity: item.quantity,
-            createdBy: currentUser.id,
-            notes: notes.trim()
-              ? `${selectedStore.name} - ${notes.trim()}`
-              : `${selectedStore.name} için oluşturuldu`,
-          })
-        )
-      );
+      await createNeedListPlan({
+        storeId: String(selectedStore.id),
+        createdBy: currentUser.id,
+        generalNotes: notes.trim() || null,
+        items,
+      });
 
       setMessage("İhtiyaç planı oluşturuldu.");
 
-      // Başarılı işlemden sonra form temizlenir.
+      // Başarılı işlemden sonra form (seçili ürünler, miktarlar, not) temizlenir.
       setSelectedFruitIds([]);
       setQuantities({});
       setNotes("");

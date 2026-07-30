@@ -5,7 +5,6 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { getNeedLists } from "../../services/needListService";
 import { createAcceptance } from "../../services/acceptanceService";
-import { getStoreName } from "../../config/stores";
 import { getUnitLabel } from "../../utils/unit";
 
 const colors = { green: "#2E7D32", dark: "#112018", background: "#F6F8F6", white: "#FFFFFF", border: "#DFE7E0", muted: "#718077", light: "#F3F6F3", red: "#D92D20" };
@@ -59,6 +58,15 @@ const loadNeeds = useCallback(async () => {
   const planIds = useMemo(() => [...new Set(needLists.map((item) => item.planId))], [needLists]);
   const activePlanId = selectedPlanId || planIds[0];
   const items = useMemo(() => needLists.filter((item) => item.planId === activePlanId), [needLists, activePlanId]);
+
+  // planId -> storeName eşlemesi (her plan tek mağazaya aittir; ad backend'den gelir).
+  const storeNameByPlan = useMemo(() => {
+    const map = {};
+    needLists.forEach((item) => {
+      if (!(item.planId in map)) map[item.planId] = item.storeName;
+    });
+    return map;
+  }, [needLists]);
 
   const setQuantity = (id, field, value) => setQuantities((current) => ({ ...current, [id]: { ...current[id], [field]: numberText(value) } }));
 
@@ -115,7 +123,7 @@ Alert.alert(
     {message ? <Text style={styles.error}>{message}</Text> : null}
     {loading ? <ActivityIndicator color={colors.green} /> : null}
     {!loading && planIds.length === 0 ? <View style={styles.empty}><Ionicons name="cube-outline" size={42} color={colors.muted} /><Text style={styles.emptyTitle}>Kabul edilecek plan yok</Text><Text style={styles.emptyText}>Önce bir ihtiyaç planı oluşturun.</Text></View> : null}
-    {planIds.length > 1 ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.planTabs}>{planIds.map((planId) => <Pressable key={planId} onPress={() => setSelectedPlanId(planId)} style={[styles.planTab, activePlanId === planId && styles.selectedPlanTab]}><Text style={[styles.planTabText, activePlanId === planId && styles.selectedPlanTabText]}>{getStoreName(planId)}</Text></Pressable>)}</ScrollView> : null}
+    {planIds.length > 1 ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.planTabs}>{planIds.map((planId) => <Pressable key={planId} onPress={() => setSelectedPlanId(planId)} style={[styles.planTab, activePlanId === planId && styles.selectedPlanTab]}><Text style={[styles.planTabText, activePlanId === planId && styles.selectedPlanTabText]}>{storeNameByPlan[planId]}</Text></Pressable>)}</ScrollView> : null}
     {items.map((item) => { const entry = quantities[item.id] || {}; return <View key={item.id} style={styles.card}>
       <View style={styles.productHeader}><View style={styles.imagePlaceholder}><Ionicons name="image-outline" size={27} color="#AAB7AE" /></View><View style={{ flex: 1 }}><Text style={styles.productName}>{item.fruitName}</Text><Text style={styles.productCode}>Ürün kodu: {item.fruitId}</Text></View><View><Text style={styles.expectedLabel}>BEKLENEN</Text><Text style={styles.expectedValue}>{item.requiredQuantity} {getUnitLabel(item.fruitUnit)}</Text></View></View>
       <View style={styles.quantityRow}><View style={styles.quantityArea}><Text style={styles.label}>Kabul edilen</Text><View style={styles.numberBox}><TextInput value={entry.accepted || ""} onChangeText={(value) => setQuantity(item.id, "accepted", value)} keyboardType="decimal-pad" placeholder="0" style={styles.numberInput}/><Text style={styles.unit}>{getUnitLabel(item.fruitUnit)}</Text></View></View><View style={styles.quantityArea}><Text style={styles.label}>Reddedilen</Text><View style={styles.numberBox}><TextInput value={entry.rejected || ""} onChangeText={(value) => setQuantity(item.id, "rejected", value)} keyboardType="decimal-pad" placeholder="0" style={styles.numberInput}/><Text style={styles.unit}>{getUnitLabel(item.fruitUnit)}</Text></View></View></View>
