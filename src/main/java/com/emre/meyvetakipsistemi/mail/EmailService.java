@@ -1,5 +1,6 @@
 package com.emre.meyvetakipsistemi.mail;
 
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,12 +34,25 @@ public class EmailService {
         this.mailSender = mailSender;
     }
 
+    // Uygulama açılışında mail ayarının eksik olup olmadığını bildirir.
+    // Gerçek değerler asla loglanmaz, sadece eksik/dolu bilgisi loglanır.
+    // Uygulama başlangıcını engellemez (sadece uyarı loglar).
+    @PostConstruct
+    private void warnIfMailNotConfigured() {
+        if (isBlank(mailUsername) || isBlank(mailPassword)) {
+            logger.warn(
+                    "MAIL_USERNAME veya MAIL_PASSWORD tanımlı değil. "
+                            + "E-posta doğrulama kodları gönderilemeyecek."
+            );
+        }
+    }
+
     // Doğrulama kodunu içeren e-postayı gönderir.
     // Başarısız olursa (yapılandırma eksik veya gönderim hatası) RuntimeException fırlatır.
     public void sendVerificationCode(String toEmail, String fullName, String code) {
 
         if (isBlank(mailUsername) || isBlank(mailPassword)) {
-            throw new RuntimeException("E-posta servisi yapılandırılmamış.");
+            throw new RuntimeException("MAIL_USERNAME veya MAIL_PASSWORD tanımlı değil.");
         }
 
         try {

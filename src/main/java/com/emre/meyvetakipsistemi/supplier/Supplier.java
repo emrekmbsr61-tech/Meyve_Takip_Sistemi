@@ -18,6 +18,14 @@ public class Supplier {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /*
+      Tedarikçinin kısa kodu (ör. "1", "4"). Alım ekranında "Kod - Ad" biçiminde
+      gösterilir. Mevcut kayıtları bozmamak için nullable'dır; boş olmayan
+      değerler arasında benzersizliktir (bkz. scripts/database migration).
+    */
+    @Column(unique = true)
+    private String supplierCode;
+
     private String supplierName;
 
     private String marketName;

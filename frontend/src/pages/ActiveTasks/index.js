@@ -12,6 +12,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { getNeedLists } from "../../services/needListService";
+import SoforTaskList from "./SoforTaskList";
 
 const colors = {
   green: "#2E7D32",
@@ -48,7 +49,22 @@ function formatDate(dateValue) {
   });
 }
 
-export default function ActiveTasks({
+/*
+  SOFOR hiç NeedList oluşturmadığı için aşağıdaki Mal Kabul akışı SOFOR
+  için her zaman boş listeye düşer. Bu yüzden SOFOR, TaskAssignment
+  tabanlı ayrı bir görev listesine (SoforTaskList) yönlendirilir.
+  Rol kontrolü burada, hook'lardan önce yapılır; iki bileşen de kendi
+  hook'larını kendi içinde çağırır, bu yüzden React hook kuralını bozmaz.
+*/
+export default function ActiveTasks(props) {
+  if (props.currentUser.role === "SOFOR") {
+    return <SoforTaskList currentUser={props.currentUser} navigation={props.navigation} />;
+  }
+
+  return <MalKabulActiveTasks {...props} />;
+}
+
+function MalKabulActiveTasks({
   currentUser,
   navigation,
 }) {

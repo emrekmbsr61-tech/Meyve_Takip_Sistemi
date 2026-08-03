@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, Text, TextInput, View } from "react-native";
 import { getUnitLabel, requiresWholeNumber } from "../../utils/unit";
 
 const colors = {
@@ -32,8 +32,12 @@ function cleanPurchasedQuantity(value, unit) {
 /*
   Bekleyen bir planın tek bir ürünü için alım bilgisi giriş satırıdır.
   PurchaseManagement ekranı büyümesin diye ayrı bir dosyaya çıkarıldı.
+
+  Tedarikçi seçimi burada YOK: bir planın bütün ürünleri artık aynı
+  tedarikçiden alınıyor, tedarikçi seçimi PurchaseManagement/index.js'te
+  plan seviyesinde tek bir yerde yapılıyor (bkz. selectedSupplierId).
 */
-export default function PurchaseItemRow({ item, values, onChange, suppliers, readOnly }) {
+export default function PurchaseItemRow({ item, values, onChange, readOnly }) {
   const unitLabel = getUnitLabel(item.fruitUnit);
 
   const quantity = Number(values.purchasedQuantity || 0);
@@ -87,35 +91,6 @@ export default function PurchaseItemRow({ item, values, onChange, suppliers, rea
 
       {readOnly ? null : (
         <>
-          <Text style={styles.label}>Tedarikçi</Text>
-
-          {suppliers.length === 0 ? (
-            <Text style={styles.noSupplierText}>Aktif tedarikçi bulunamadı.</Text>
-          ) : (
-            <View style={styles.supplierRow}>
-              {suppliers.map((supplier) => {
-                const selected = values.supplierId === supplier.id;
-
-                return (
-                  <Pressable
-                    key={supplier.id}
-                    style={[styles.supplierChip, selected && styles.supplierChipSelected]}
-                    onPress={() => onChange("supplierId", supplier.id)}
-                  >
-                    <Text
-                      style={[
-                        styles.supplierChipText,
-                        selected && styles.supplierChipTextSelected,
-                      ]}
-                    >
-                      {supplier.supplierName}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
-
           <Text style={styles.label}>Not</Text>
           <TextInput
             value={values.notes}
@@ -157,18 +132,6 @@ const styles = StyleSheet.create({
   },
   row: { flexDirection: "row", gap: 10 },
   rowItem: { flex: 1 },
-  supplierRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  supplierChip: {
-    borderWidth: 1,
-    borderColor: colors.green,
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  supplierChipSelected: { backgroundColor: colors.green },
-  supplierChipText: { color: colors.green, fontWeight: "700", fontSize: 13 },
-  supplierChipTextSelected: { color: colors.white },
-  noSupplierText: { color: "#DC2626", fontWeight: "600" },
   totalBox: {
     backgroundColor: colors.background,
     borderRadius: 12,

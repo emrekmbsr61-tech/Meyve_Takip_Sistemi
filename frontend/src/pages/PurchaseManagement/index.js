@@ -18,6 +18,7 @@ import {
 } from "../../services/purchaseService";
 import { getActiveSuppliers } from "../../services/supplierService";
 import PurchaseItemRow from "./PurchaseItemRow";
+import SupplierPickerModal, { formatSupplierLabel } from "./SupplierPickerModal";
 
 const colors = {
   green: "#2E7D32",
@@ -68,6 +69,13 @@ export default function PurchaseManagement({ currentUser }) {
   const [planItems, setPlanItems] = useState([]);
   const [itemValues, setItemValues] = useState({});
 
+  /*
+    Karar değişti: bir planın bütün ürünleri artık AYNI tedarikçiden alınıyor.
+    Bu yüzden supplierId artık ürün bazında değil, plan bazında tek bir state.
+  */
+  const [selectedSupplierId, setSelectedSupplierId] = useState(null);
+  const [supplierPickerVisible, setSupplierPickerVisible] = useState(false);
+
   // ADMIN tüm bekleyen planları salt okunur izler; alım kaydedemez.
   const isReadOnly = currentUser.role === "ADMIN";
 
@@ -112,7 +120,6 @@ export default function PurchaseManagement({ currentUser }) {
           purchasedQuantity: "",
           unitPrice: "",
           salesPrice: "",
-          supplierId: null,
           notes: "",
         };
       });
@@ -121,6 +128,8 @@ export default function PurchaseManagement({ currentUser }) {
       setSelectedStoreName(storeName);
       setPlanItems(remainingItems);
       setItemValues(initialValues);
+      // Farklı bir plana geçildiğinde önceki planın tedarikçi seçimi taşınmasın.
+      setSelectedSupplierId(null);
       setView("detail");
     } catch (error) {
       setMessage(error.message);
@@ -135,6 +144,7 @@ export default function PurchaseManagement({ currentUser }) {
     setSelectedStoreName(null);
     setPlanItems([]);
     setItemValues({});
+    setSelectedSupplierId(null);
     loadPendingPlans();
   };
 
@@ -145,10 +155,11 @@ export default function PurchaseManagement({ currentUser }) {
     }));
   };
 
-  // Kaydet butonunun aktif olması için bütün zorunlu alanların geçerli olması gerekir.
+  // Kaydet butonunun aktif olması için ürün alanlarının geçerli olması gerekir.
+  // Tedarikçi seçimi artık plan bazında olduğu için burada kontrol edilmez,
+  // confirmSave içinde ayrı ve açık bir uyarıyla kontrol edilir (bkz. madde 8).
   const allItemsValid =
     planItems.length > 0 &&
-    suppliers.length > 0 &&
     planItems.every((item) => {
       const values = itemValues[item.fruitId];
       if (!values) return false;
@@ -166,12 +177,16 @@ export default function PurchaseManagement({ currentUser }) {
         unitPrice >= 0 &&
         values.salesPrice !== "" &&
         Number.isFinite(salesPrice) &&
-        salesPrice >= 0 &&
-        Boolean(values.supplierId)
+        salesPrice >= 0
       );
     });
 
   const confirmSave = () => {
+    if (!selectedSupplierId) {
+      Alert.alert("Tedarikçi seçilmedi", "Lütfen plan için bir tedarikçi seçin.");
+      return;
+    }
+
     Alert.alert(
       "Alım kaydedilsin mi?",
       `Plan #${selectedPlanId} için ${planItems.length} ürünlük alım kaydedilecek. Bu işlem geri alınamaz.`,
@@ -195,7 +210,8 @@ export default function PurchaseManagement({ currentUser }) {
           purchasedQuantity: Number(values.purchasedQuantity),
           unitPrice: Number(values.unitPrice),
           salesPrice: Number(values.salesPrice),
-          supplierId: values.supplierId,
+          // Plan için seçilen tek tedarikçi, her ürün satırına aynen yazılır.
+          supplierId: selectedSupplierId,
           notes: values.notes,
         };
       });
@@ -212,6 +228,8 @@ export default function PurchaseManagement({ currentUser }) {
     }
   };
 
+  const selectedSupplier = suppliers.find((supplier) => supplier.id === selectedSupplierId);
+
   if (view === "detail") {
     return (
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -220,7 +238,28 @@ export default function PurchaseManagement({ currentUser }) {
           <Text style={styles.backText}>Plan listesine dön</Text>
         </Pressable>
 
-        <Text style={styles.heading}>Plan #{selectedPlanId} Alımı</Text>
+        <View style={styles.headerRow}>
+          <Text style={styles.heading}>Plan #{selectedPlanId} Alımı</Text>
+
+          {isReadOnly ? null : (
+            <Pressable
+              style={styles.supplierPickerButton}
+              onPress={() => setSupplierPickerVisible(true)}
+            >
+              <Text
+                style={[
+                  styles.supplierPickerText,
+                  !selectedSupplier && styles.supplierPickerPlaceholder,
+                ]}
+                numberOfLines={1}
+              >
+                {selectedSupplier ? formatSupplierLabel(selectedSupplier) : "Tedarikçi Seç"}
+              </Text>
+              <Ionicons name="chevron-down" size={16} color={colors.green} />
+            </Pressable>
+          )}
+        </View>
+
         <Text style={styles.subheading}>
           {selectedStoreName}
           {isReadOnly ? " · Salt okunur" : ""}
@@ -244,10 +283,17 @@ export default function PurchaseManagement({ currentUser }) {
             item={item}
             values={itemValues[item.fruitId] || {}}
             onChange={(field, value) => updateItemValue(item.fruitId, field, value)}
-            suppliers={suppliers}
             readOnly={isReadOnly}
           />
         ))}
+
+        <SupplierPickerModal
+          visible={supplierPickerVisible}
+          suppliers={suppliers}
+          selectedSupplierId={selectedSupplierId}
+          onSelect={(supplierId) => setSelectedSupplierId(supplierId)}
+          onClose={() => setSupplierPickerVisible(false)}
+        />
 
         {isReadOnly ? null : (
           <Pressable
@@ -306,8 +352,30 @@ export default function PurchaseManagement({ currentUser }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 20, paddingBottom: 40 },
-  heading: { color: colors.dark, fontSize: 24, fontWeight: "800" },
+  // Ekran dar olduğunda başlık ve tedarikçi butonu alt alta düşebilsin diye
+  // flexWrap kullanılır; her ikisine de üstten boşluk (gap) bırakılır.
+  headerRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  heading: { color: colors.dark, fontSize: 24, fontWeight: "800", flexShrink: 1 },
   subheading: { color: colors.muted, marginTop: 4, marginBottom: 16 },
+  supplierPickerButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderColor: colors.green,
+    borderRadius: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    maxWidth: "100%",
+  },
+  supplierPickerText: { color: colors.green, fontWeight: "700", fontSize: 14, flexShrink: 1 },
+  supplierPickerPlaceholder: { color: colors.muted, fontWeight: "600" },
   error: { color: colors.red, fontWeight: "600", marginBottom: 12 },
   backRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 14 },
   backText: { color: colors.green, fontWeight: "700" },

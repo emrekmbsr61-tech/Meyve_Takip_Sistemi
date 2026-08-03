@@ -1,4 +1,3 @@
-// React'te değişebilen kullanıcı bilgisini tutmak için kullanıyoruz.
 import { useState } from "react";
 
 // Taslak Mal Kabul ve Aktif Görev ekranlarında kullanıyoruz.
@@ -21,6 +20,7 @@ import NeedListCreate from "./src/pages/NeedListCreate";
 import NeedListList from "./src/pages/NeedListList";
 import Acceptance from "./src/pages/Acceptance";
 import ActiveTasks from "./src/pages/ActiveTasks";
+import SoforTaskDetail from "./src/pages/SoforTaskDetail";
 import AdminUserApproval from "./src/pages/AdminUserApproval";
 import PurchaseManagement from "./src/pages/PurchaseManagement";
 
@@ -80,6 +80,10 @@ function AcceptanceScreen(props) {
 
 function ActiveTasksScreen(props) {
   return <ActiveTasks {...props} />;
+}
+
+function SoforTaskDetailScreen(props) {
+  return <SoforTaskDetail {...props} />;
 }
 
 /*
@@ -357,6 +361,19 @@ export default function App() {
           }}
         >
           {(props) => <ActiveTasksScreen {...props} currentUser={currentUser} />}
+        </Stack.Screen>
+
+        {/*
+          ŞOFÖR'ün Aktif Görevler ekranındaki bir göreve basınca açılır.
+          route.params.task, SoforTaskList'in zaten elinde olan görev nesnesidir.
+        */}
+        <Stack.Screen
+          name="SoforTaskDetail"
+          options={{
+            title: "Görev Detayı",
+          }}
+        >
+          {(props) => <SoforTaskDetailScreen {...props} />}
         </Stack.Screen>
 
         {/*
