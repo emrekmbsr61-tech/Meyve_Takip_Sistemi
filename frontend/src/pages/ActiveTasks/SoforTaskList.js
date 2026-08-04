@@ -64,7 +64,13 @@ export default function SoforTaskList({ currentUser, navigation }) {
       setErrorMessage("");
 
       const result = await getTasks(currentUser.id);
-      setTasks(Array.isArray(result) ? result : []);
+
+      // Tamamlanan görevler aktif görev listesinde gösterilmez.
+      const activeTasks = Array.isArray(result)
+        ? result.filter((task) => task.status !== "COMPLETED")
+        : [];
+
+      setTasks(activeTasks);
     } catch (error) {
       setTasks([]);
       setErrorMessage(error.message || "Görevler alınamadı.");

@@ -70,7 +70,7 @@ export default function PurchaseManagement({ currentUser }) {
   const [itemValues, setItemValues] = useState({});
 
   /*
-    Karar değişti: bir planın bütün ürünleri artık AYNI tedarikçiden alınıyor.
+    bir planın bütün ürünleri artık AYNI tedarikçiden alınıyor.
     Bu yüzden supplierId artık ürün bazında değil, plan bazında tek bir state.
   */
   const [selectedSupplierId, setSelectedSupplierId] = useState(null);

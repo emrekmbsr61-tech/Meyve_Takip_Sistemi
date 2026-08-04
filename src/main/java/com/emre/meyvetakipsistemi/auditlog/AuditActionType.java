@@ -12,6 +12,7 @@ public enum AuditActionType {
 
     PURCHASE_CREATED("Alım kaydı oluşturuldu"),
     PURCHASE_FAILED("Alım kaydı başarısız oldu"),
+    COLLECTION_CREATED("Toplama kaydı oluşturuldu"),
     TASK_COMPLETED("Görev tamamlandı"),
     TASK_ASSIGNED("Görev atandı"),
 

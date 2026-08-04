@@ -1,8 +1,17 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
-import { getNeedLists } from "../../services/needListService";
-import { getUnitLabel } from "../../utils/unit";
+import { createCollectionsForPlan, getCollectionPlanDetail } from "../../services/collectionService";
+import { cleanQuantity, getUnitLabel } from "../../utils/unit";
 
 const colors = {
   green: "#2E7D32",
@@ -55,62 +64,62 @@ function formatRemaining(dueDate) {
 /*
   ŞOFÖR'ün Aktif Görevler kartına basınca açılan detay ekranı.
 
-  Görevin kendisi (id, planId, taskType, status, dueDate) navigation parametresiyle
-  gelir; backend'de tek bir görevi id ile getiren bir GET /api/tasks/{id} endpoint'i
-  yok (TaskAssignmentController yalnızca userId'ye göre liste ve /start döner), bu
-  yüzden yeniden bir ağ isteği yapmak yerine SoforTaskList'in zaten sahip olduğu
-  görev nesnesi doğrudan buraya taşınır.
+  Görevin kendisi (id, planId, taskType, status, dueDate, assignedUserId)
+  navigation parametresiyle gelir; backend'de tek bir görevi id ile getiren bir
+  GET /api/tasks/{id} endpoint'i yok, bu yüzden SoforTaskList'in zaten sahip
+  olduğu görev nesnesi doğrudan buraya taşınır. driverId olarak da bu görevin
+  assignedUserId'si kullanılır (SoforTaskList her zaman yalnızca giriş yapan
+  şoförün kendi görevlerini getirdiği için bu değer her zaman currentUser.id
+  ile aynıdır).
 
-  Plan ürünleri GET /api/need-lists üzerinden planId'ye göre filtrelenerek getirilir
-  (bu endpoint rol kısıtlaması olmadığı için SOFOR da erişebilir).
-
-  ÖNEMLİ: Burada gösterilen miktarlar NeedList.requiredQuantity, yani planın
-  İHTİYAÇ (talep edilen) miktarlarıdır. Gerçekte SATIN ALINAN miktar ve tedarikçi
-  bilgisi Purchase kayıtlarındadır, ama GET /api/purchases/plans/{planId}
-  yalnızca MAGAZA_MUDURU/ADMIN'e açıktır (PurchaseService.requireViewer SOFOR'u
-  reddeder). Bu yüzden o veri burada GÖSTERİLMEZ, uydurulmaz; ekranda da
-  açıkça belirtilir.
+  Ürün/tedarikçi bilgisi GET /api/collections/plans/{planId}?driverId= üzerinden
+  gelir. Bu endpoint şoföre yalnızca güvenli alanları (planId, mağaza, fruitId,
+  fruitName, fruitUnit, supplierCode, supplierName) döner; purchasedQuantity,
+  unitPrice, totalPrice, salesPrice ve mağazanın istediği miktar (requiredQuantity)
+  hiçbir zaman backend'den gelmez, bu yüzden burada da hiç gösterilmez.
 */
-export default function SoforTaskDetail({ route }) {
+export default function SoforTaskDetail({ route, navigation }) {
   const task = route.params?.task || {};
 
-  const [planInfo, setPlanInfo] = useState(null);
-  const [items, setItems] = useState([]);
+  const [planDetail, setPlanDetail] = useState(null);
+  const [collectedValues, setCollectedValues] = useState({});
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const isToplamaTask = task.taskType === "TOPLAMA";
+  const alreadyCompleted = task.status === "COMPLETED";
 
   useEffect(() => {
     let isMounted = true;
 
-    async function loadPlanInfo() {
+    async function loadPlanDetail() {
       try {
         setLoading(true);
         setErrorMessage("");
 
-        const needLists = await getNeedLists();
-        const planItems = needLists.filter((item) => item.planId === task.planId);
+        const detail = await getCollectionPlanDetail(task.planId, task.assignedUserId);
 
         if (!isMounted) return;
 
-        if (planItems.length > 0) {
-          setPlanInfo({
-            storeId: planItems[0].storeId,
-            storeName: planItems[0].storeName,
-          });
-        }
+        setPlanDetail(detail);
 
-        setItems(planItems);
+        const initialValues = {};
+        (detail.items || []).forEach((item) => {
+          initialValues[item.fruitId] = { collectedQuantity: "", notes: "" };
+        });
+        setCollectedValues(initialValues);
       } catch (error) {
         if (isMounted) {
-          setErrorMessage(error.message || "Plan bilgisi alınamadı.");
+          setErrorMessage(error.message || "Toplama detayı alınamadı.");
         }
       } finally {
         if (isMounted) setLoading(false);
       }
     }
 
-    if (task.planId) {
-      loadPlanInfo();
+    if (task.planId && task.assignedUserId && isToplamaTask && !alreadyCompleted) {
+      loadPlanDetail();
     } else {
       setLoading(false);
     }
@@ -118,7 +127,72 @@ export default function SoforTaskDetail({ route }) {
     return () => {
       isMounted = false;
     };
-  }, [task.planId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task.planId, task.assignedUserId]);
+
+  const handleChange = (fruitId, field, value, fruitUnit) => {
+    setCollectedValues((current) => ({
+      ...current,
+      [fruitId]: {
+        ...current[fruitId],
+        [field]: field === "collectedQuantity" ? cleanQuantity(value, fruitUnit) : value,
+      },
+    }));
+  };
+
+  const handleSubmit = async () => {
+    if (submitting || !planDetail) return;
+
+    const items = planDetail.items || [];
+
+    const hasInvalidQuantity = items.some((item) => {
+      const raw = collectedValues[item.fruitId]?.collectedQuantity;
+      const quantity = Number(raw);
+      return !raw || Number.isNaN(quantity) || quantity <= 0;
+    });
+
+    if (hasInvalidQuantity) {
+      Alert.alert(
+        "Eksik bilgi",
+        "Lütfen tüm ürünler için toplanan miktarı (sıfırdan büyük) girin."
+      );
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      await createCollectionsForPlan({
+        planId: planDetail.planId,
+        createdBy: task.assignedUserId,
+        items: items.map((item) => {
+          const values = collectedValues[item.fruitId];
+          return {
+            fruitId: item.fruitId,
+            collectedQuantity: Number(values.collectedQuantity),
+            notes: values.notes ? values.notes.trim() : null,
+          };
+        }),
+      });
+
+      Alert.alert("Toplama tamamlandı", "Toplama kaydınız başarıyla kaydedildi.", [
+        {
+          text: "Tamam",
+          /*
+            Bu ekrana her zaman ActiveTasks (SoforTaskList) içinden geçiliyor
+            (bkz. SoforTaskList.js -> navigation.navigate("SoforTaskDetail", { task })).
+            goBack() hem bu ekranı yığından kaldırır hem de ActiveTasks'ın
+            useFocusEffect'ini tetikleyerek görev listesini yeniler.
+          */
+          onPress: () => navigation.goBack(),
+        },
+      ]);
+    } catch (error) {
+      Alert.alert("Kaydedilemedi", error.message || "Toplama kaydı oluşturulamadı.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -135,57 +209,124 @@ export default function SoforTaskDetail({ route }) {
         </View>
       </View>
 
-      <View style={styles.infoCard}>
-        <Text style={styles.sectionTitle}>Görev Bilgileri</Text>
-
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Mağaza</Text>
-          <Text style={styles.infoValue}>
-            {planInfo?.storeName
-              ? `${planInfo.storeName}${planInfo.storeId ? ` (#${planInfo.storeId})` : ""}`
-              : loading
-              ? "Yükleniyor..."
-              : "Bulunamadı"}
+      {alreadyCompleted ? (
+        // Tamamlanan görevde kalan süre, miktar alanları ve buton hiç gösterilmez.
+        <View style={styles.infoCard}>
+          <Text style={styles.sectionNote}>Bu görev tamamlandı.</Text>
+        </View>
+      ) : !isToplamaTask ? (
+        <View style={styles.infoCard}>
+          <Text style={styles.sectionNote}>
+            Bu görev türü için toplama ekranı bulunmuyor.
           </Text>
         </View>
+      ) : (
+        <>
+          {loading ? (
+            <ActivityIndicator color={colors.green} style={styles.loadingSpacing} />
+          ) : null}
 
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Son tarih</Text>
-          <Text style={styles.infoValue}>{formatDateTime(task.dueDate)}</Text>
-        </View>
-
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Kalan süre</Text>
-          <Text style={styles.infoValue}>{formatRemaining(task.dueDate)}</Text>
-        </View>
-      </View>
-
-      <View style={styles.infoCard}>
-        <Text style={styles.sectionTitle}>Plana Ait İhtiyaç Ürünleri</Text>
-        <Text style={styles.sectionNote}>
-          Bu liste planın İHTİYAÇ miktarlarını gösterir. Satın alınan gerçek
-          miktar ve tedarikçi bilgisi şoför yetkisiyle görüntülenemiyor.
-        </Text>
-
-        {loading ? <ActivityIndicator color={colors.green} style={styles.loadingSpacing} /> : null}
-
-        {!loading && errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-
-        {!loading && !errorMessage && items.length === 0 ? (
-          <Text style={styles.emptyText}>Bu plana ait ürün bulunamadı.</Text>
-        ) : null}
-
-        {!loading &&
-          !errorMessage &&
-          items.map((item) => (
-            <View key={item.id} style={styles.itemRow}>
-              <Text style={styles.itemName}>{item.fruitName}</Text>
-              <Text style={styles.itemQuantity}>
-                {item.requiredQuantity} {getUnitLabel(item.fruitUnit)}
-              </Text>
+          {!loading && errorMessage ? (
+            <View style={styles.infoCard}>
+              <Text style={styles.errorText}>{errorMessage}</Text>
             </View>
-          ))}
-      </View>
+          ) : null}
+
+          {/*
+            Mağaza/son tarih/kalan süre bilgisi yalnızca backend'den plan detayı
+            başarıyla geldiyse gösterilir; resolveStoreInfo mağaza adını
+            çözemezse bile her zaman "Mağaza #<id>" gibi anlamlı bir metin
+            döner, bu yüzden burada asla "Bulunamadı" gibi belirsiz bir metin
+            yazılmaz.
+          */}
+          {!loading && !errorMessage && planDetail ? (
+            <>
+              <View style={styles.infoCard}>
+                <Text style={styles.sectionTitle}>Görev Bilgileri</Text>
+
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Mağaza</Text>
+                  <Text style={styles.infoValue}>
+                    {planDetail.storeName}
+                    {planDetail.storeId ? ` (#${planDetail.storeId})` : ""}
+                  </Text>
+                </View>
+
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Son tarih</Text>
+                  <Text style={styles.infoValue}>{formatDateTime(task.dueDate)}</Text>
+                </View>
+
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Kalan süre</Text>
+                  <Text style={styles.infoValue}>{formatRemaining(task.dueDate)}</Text>
+                </View>
+              </View>
+
+              <View style={styles.infoCard}>
+                <Text style={styles.sectionTitle}>Topladığınız Ürünler</Text>
+                <Text style={styles.sectionNote}>
+                  Aşağıya, müdürün alım miktarından bağımsız olarak kendi
+                  saydığınız miktarı girin.
+                </Text>
+
+                {(planDetail.items || []).length === 0 ? (
+                  <Text style={styles.emptyText}>Bu plana ait ürün bulunamadı.</Text>
+                ) : null}
+
+                {(planDetail.items || []).map((item) => {
+                  const values = collectedValues[item.fruitId] || {};
+
+                  return (
+                    <View key={item.fruitId} style={styles.productCard}>
+                      <Text style={styles.productName}>{item.fruitName}</Text>
+                      <Text style={styles.productSupplier}>
+                        Tedarikçi:{" "}
+                        {item.supplierCode
+                          ? `${item.supplierCode} - ${item.supplierName}`
+                          : item.supplierName || "Bilinmeyen tedarikçi"}
+                      </Text>
+
+                      <Text style={styles.label}>
+                        Toplanan Miktar ({getUnitLabel(item.fruitUnit)})
+                      </Text>
+                      <TextInput
+                        value={values.collectedQuantity}
+                        onChangeText={(value) =>
+                          handleChange(item.fruitId, "collectedQuantity", value, item.fruitUnit)
+                        }
+                        placeholder="0"
+                        keyboardType="decimal-pad"
+                        style={styles.input}
+                      />
+
+                      <Text style={styles.label}>Not (opsiyonel)</Text>
+                      <TextInput
+                        value={values.notes}
+                        onChangeText={(value) => handleChange(item.fruitId, "notes", value)}
+                        placeholder="Opsiyonel not..."
+                        style={styles.input}
+                      />
+                    </View>
+                  );
+                })}
+
+                {(planDetail.items || []).length > 0 ? (
+                  <Pressable
+                    style={[styles.submitButton, submitting && styles.submitButtonDisabled]}
+                    onPress={handleSubmit}
+                    disabled={submitting}
+                  >
+                    <Text style={styles.submitButtonText}>
+                      {submitting ? "Kaydediliyor..." : "Toplamayı Tamamla"}
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            </>
+          ) : null}
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -231,16 +372,36 @@ const styles = StyleSheet.create({
   },
   infoLabel: { color: colors.muted, fontWeight: "600" },
   infoValue: { color: colors.text, fontWeight: "700" },
-  loadingSpacing: { marginTop: 10 },
+  loadingSpacing: { marginTop: 10, marginBottom: 16 },
   errorText: { color: colors.red, fontWeight: "600" },
   emptyText: { color: colors.muted, textAlign: "center", paddingVertical: 10 },
-  itemRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: 9,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+  productCard: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 12,
   },
-  itemName: { color: colors.text, fontWeight: "700" },
-  itemQuantity: { color: colors.muted, fontWeight: "600" },
+  productName: { color: colors.text, fontSize: 16, fontWeight: "800" },
+  productSupplier: { color: colors.muted, fontSize: 12, marginTop: 3, marginBottom: 4 },
+  label: { color: colors.text, fontWeight: "700", marginTop: 8, marginBottom: 6, fontSize: 13 },
+  input: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: colors.text,
+  },
+  submitButton: {
+    backgroundColor: colors.green,
+    borderRadius: 16,
+    alignItems: "center",
+    paddingVertical: 16,
+    marginTop: 6,
+  },
+  submitButtonDisabled: { opacity: 0.6 },
+  submitButtonText: { color: colors.white, fontWeight: "800", fontSize: 17 },
 });
