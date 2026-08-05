@@ -100,6 +100,14 @@ const ALL_MENU_ITEMS = {
     iconColor: colors.orange,
     iconBackground: colors.orangeLight,
   },
+  AdminAuditLog: {
+    screen: "AdminAuditLog",
+    title: "İşlem Kayıtları",
+    description: "Sistemdeki tüm işlem kayıtlarını görüntüle.",
+    icon: "document-text-outline",
+    iconColor: colors.primaryDark,
+    iconBackground: colors.primaryLight,
+  },
 };
 
 /*
@@ -123,6 +131,7 @@ const ROLE_MENU_KEYS = {
     "PurchaseManagement",
     "Fruits",
     "AdminUserApproval",
+    "AdminAuditLog",
   ],
   MAGAZA_PERSONELI: ["NeedListCreate", "NeedListList", "Acceptance", "ActiveTasks", "Fruits"],
   MAGAZA_MUDURU: ["NeedListList", "PurchaseManagement", "ActiveTasks", "Fruits"],

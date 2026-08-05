@@ -23,6 +23,7 @@ import ActiveTasks from "./src/pages/ActiveTasks";
 import SoforTaskDetail from "./src/pages/SoforTaskDetail";
 import AdminUserApproval from "./src/pages/AdminUserApproval";
 import PurchaseManagement from "./src/pages/PurchaseManagement";
+import AdminAuditLog from "./src/pages/AdminAuditLog";
 
 
 // Uygulamadaki ekranları bir yığın şeklinde yönetir.
@@ -53,8 +54,8 @@ const colors = {
   currentUser bilgisini gönderiyoruz çünkü ihtiyaç kaydını
   hangi kullanıcının oluşturduğunu bilmemiz gerekiyor.
 */
-function NeedListCreateScreen({ currentUser }) {
-  return <NeedListCreate currentUser={currentUser} />;
+function NeedListCreateScreen({ navigation, currentUser }) {
+  return <NeedListCreate navigation={navigation} currentUser={currentUser} />;
 }
 
 /*
@@ -100,6 +101,15 @@ function AdminUserApprovalScreen({ currentUser }) {
 */
 function PurchaseManagementScreen({ currentUser }) {
   return <PurchaseManagement currentUser={currentUser} />;
+}
+
+/*
+  Yönetici (ADMIN) işlem kayıtları (AuditLog) ekranını açar.
+  Bu ekran currentUser'a ihtiyaç duymaz; GET /api/audit-logs herkese açık
+  şekilde tüm kayıtları döner.
+*/
+function AdminAuditLogScreen() {
+  return <AdminAuditLog />;
 }
 
 /*
@@ -321,7 +331,9 @@ export default function App() {
             title: "Yeni İhtiyaç Planı",
           }}
         >
-          {() => <NeedListCreateScreen currentUser={currentUser} />}
+          {(props) => (
+            <NeedListCreateScreen {...props} currentUser={currentUser} />
+          )}
         </Stack.Screen>
 
         {/*
@@ -413,6 +425,19 @@ export default function App() {
           }}
         >
           {() => <PurchaseManagementScreen currentUser={currentUser} />}
+        </Stack.Screen>
+
+        {/*
+          Ana ekrandaki "İşlem Kayıtları" kartına basılınca açılır.
+          Bu kart Home ekranında yalnızca ADMIN rolündeki kullanıcıya gösterilir.
+        */}
+        <Stack.Screen
+          name="AdminAuditLog"
+          options={{
+            title: "İşlem Kayıtları",
+          }}
+        >
+          {() => <AdminAuditLogScreen />}
         </Stack.Screen>
       </Stack.Navigator>
 

@@ -2,6 +2,8 @@ package com.emre.meyvetakipsistemi.acceptance;
 
 import com.emre.meyvetakipsistemi.acceptance.dto.AcceptanceItemRequest;
 import com.emre.meyvetakipsistemi.acceptance.dto.AcceptanceRequest;
+import com.emre.meyvetakipsistemi.auditlog.AuditActionType;
+import com.emre.meyvetakipsistemi.auditlog.AuditLogService;
 import com.emre.meyvetakipsistemi.needlist.NeedList;
 import com.emre.meyvetakipsistemi.needlist.NeedListRepository;
 import com.emre.meyvetakipsistemi.needlist.NeedListStatus;
@@ -27,19 +29,22 @@ public class AcceptanceService {
     private final NeedListRepository needListRepository;
     private final UserRepository userRepository;
     private final TaskAssignmentRepository taskAssignmentRepository;
+    private final AuditLogService auditLogService;
 
     public AcceptanceService(
             AcceptanceRepository acceptanceRepository,
             AcceptanceItemRepository itemRepository,
             NeedListRepository needListRepository,
             UserRepository userRepository,
-            TaskAssignmentRepository taskAssignmentRepository
+            TaskAssignmentRepository taskAssignmentRepository,
+            AuditLogService auditLogService
     ) {
         this.acceptanceRepository = acceptanceRepository;
         this.itemRepository = itemRepository;
         this.needListRepository = needListRepository;
         this.userRepository = userRepository;
         this.taskAssignmentRepository = taskAssignmentRepository;
+        this.auditLogService = auditLogService;
     }
 
     /*
@@ -120,6 +125,20 @@ public class AcceptanceService {
 
         kabulTask.setStatus(TaskStatus.COMPLETED);
         taskAssignmentRepository.save(kabulTask);
+
+        // Log, tüm kayıtlar başarıyla yazıldıktan ve görev tamamlandıktan sonra
+        // atılır (Purchase/Collection ile aynı desen); bir hata olsaydı yöntem
+        // burayı görmeden exception fırlatıp @Transactional ile geri alınırdı,
+        // bu yüzden başarısız işlem için asla sahte bir "başarılı" log oluşmaz.
+        auditLogService.createLog(
+                receiver.getId(),
+                receiver.getFullName(),
+                AuditActionType.ACCEPTANCE_CREATED,
+                "Acceptance",
+                request.getPlanId(),
+                receiver.getFullName() + " Plan #" + request.getPlanId() + " için "
+                        + request.getItems().size() + " ürünlük mal kabul kaydetti."
+        );
 
         return saved;
     }

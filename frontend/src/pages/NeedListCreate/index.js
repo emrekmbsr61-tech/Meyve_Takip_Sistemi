@@ -58,7 +58,7 @@ function getImageUrl(imagePath) {
   return `${IMAGE_BASE_URL}${imagePath}`;
 }
 
-export default function NeedListCreate({ currentUser }) {
+export default function NeedListCreate({ currentUser, navigation }) {
   // Backend'den alınan bütün meyveler.
   const [fruits, setFruits] = useState([]);
 
@@ -182,36 +182,41 @@ export default function NeedListCreate({ currentUser }) {
     setFruitPage(1);
   }
 
-  // Meyveyi seçer veya seçimi kaldırır.
-  function toggleFruit(fruit) {
-    const alreadySelected = selectedFruitIds.includes(
-      fruit.id
-    );
+  /*
+    Meyveye ilk kez dokunulduğunda seçer ve uygun bir başlangıç miktarı verir:
+    tam sayı gereken birimlerde (ADET/KASA/PAKET/DEMET) 1, ondalıklı
+    birimlerde (KG) 0,5. requiresWholeNumber zaten unit.js'de tanımlı.
+  */
+  function selectFruit(fruit) {
+    const step = requiresWholeNumber(fruit.unit) ? 1 : 0.5;
 
-    if (alreadySelected) {
-      setSelectedFruitIds((current) =>
-        current.filter((id) => id !== fruit.id)
-      );
-
-      setQuantities((current) => {
-        const nextQuantities = { ...current };
-
-        delete nextQuantities[fruit.id];
-
-        return nextQuantities;
-      });
-
-      return;
-    }
-
-    setSelectedFruitIds((current) => [
-      ...current,
-      fruit.id,
-    ]);
+    setSelectedFruitIds((current) => [...current, fruit.id]);
 
     setQuantities((current) => ({
       ...current,
-      [fruit.id]: "",
+      [fruit.id]: String(step),
+    }));
+  }
+
+  /*
+    Meyve seçim penceresindeki eksi/artı butonlarıyla miktarı değiştirir.
+    Adım büyüklüğü de selectFruit ile aynı kurala uyar (tam sayı birimlerde 1,
+    ondalıklı birimlerde 0,5). Miktar sıfırın altına inerse ürün seçili
+    listeden tamamen kaldırılır.
+  */
+  function stepQuantity(fruit, direction) {
+    const step = requiresWholeNumber(fruit.unit) ? 1 : 0.5;
+    const current = parseFloat(quantities[fruit.id]) || 0;
+    const next = current + direction * step;
+
+    if (next <= 0) {
+      removeSelectedFruit(fruit.id);
+      return;
+    }
+
+    setQuantities((prevState) => ({
+      ...prevState,
+      [fruit.id]: String(next),
     }));
   }
 
@@ -336,6 +341,16 @@ export default function NeedListCreate({ currentUser }) {
             </Text>
           </View>
 
+          {/* İkincil geçiş: daha önce oluşturulmuş planları görüntüleme ekranı */}
+          <Pressable
+            style={styles.secondaryLink}
+            onPress={() => navigation?.navigate("NeedListList")}
+          >
+            <Text style={styles.secondaryLinkText}>
+              Mevcut İhtiyaçları Gör →
+            </Text>
+          </Pressable>
+
           {/* Mağaza seçimi */}
           <Text style={styles.label}>Mağaza</Text>
 
@@ -358,18 +373,21 @@ export default function NeedListCreate({ currentUser }) {
             </Text>
           </Pressable>
 
-          {/* Ürün başlığı ve ürün ekleme butonu */}
+          {/*
+            Ürün başlığı. Hiç ürün seçilmediyse aşağıdaki büyük "Henüz ürün
+            seçilmedi" kartı zaten seçim penceresini açar; ürün seçiliyken de
+            küçük bir metin bağlantısıyla aynı pencere tekrar açılabilir.
+          */}
           <View style={styles.sectionHeader}>
             <Text style={styles.label}>Ürünler</Text>
 
-            <Pressable
-              style={styles.addProductButton}
-              onPress={openFruitModal}
-            >
-              <Text style={styles.addProductText}>
-                + Ürün Ekle
-              </Text>
-            </Pressable>
+            {selectedFruits.length > 0 ? (
+              <Pressable onPress={openFruitModal} hitSlop={8}>
+                <Text style={styles.editProductsText}>
+                  Ürün Ekle / Düzenle
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
 
           {/* Hiç ürün seçilmediyse */}
@@ -654,59 +672,100 @@ export default function NeedListCreate({ currentUser }) {
                         key={fruit.id}
                         style={[
                           styles.modalItem,
-                          styles.modalFruitItem,
                           selected &&
                             styles.selectedModalItem,
                         ]}
-                        onPress={() =>
-                          toggleFruit(fruit)
+                        // Seçiliyken kart bir kez daha dokununca hiçbir şey
+                        // yapmaz; miktar artık yalnızca eksi/artı butonlarıyla
+                        // değişir, sıfıra inince ürün otomatik kaldırılır.
+                        onPress={
+                          selected
+                            ? undefined
+                            : () => selectFruit(fruit)
                         }
                       >
-                        {/* Meyve görseli */}
-                        <View
-                          style={
-                            styles.modalFruitImageBox
-                          }
-                        >
-                          {imageUrl ? (
-                            <Image
-                              source={{ uri: imageUrl }}
-                              style={styles.fruitImage}
-                              resizeMode="cover"
-                            />
-                          ) : (
+                        <View style={styles.modalFruitItem}>
+                          {/* Meyve görseli */}
+                          <View
+                            style={
+                              styles.modalFruitImageBox
+                            }
+                          >
+                            {imageUrl ? (
+                              <Image
+                                source={{ uri: imageUrl }}
+                                style={styles.fruitImage}
+                                resizeMode="cover"
+                              />
+                            ) : (
+                              <Text
+                                style={styles.noImageText}
+                              >
+                                Görsel yok
+                              </Text>
+                            )}
+                          </View>
+
+                          {/* Meyve bilgileri */}
+                          <View style={styles.fruitTextArea}>
                             <Text
-                              style={styles.noImageText}
+                              style={[
+                                styles.modalItemTitle,
+                                selected &&
+                                  styles.selectedModalText,
+                              ]}
                             >
-                              Görsel yok
+                              {fruit.name}
                             </Text>
-                          )}
+
+                            <Text
+                              style={[
+                                styles.modalItemDescription,
+                                selected &&
+                                  styles.selectedModalText,
+                              ]}
+                            >
+                              {fruit.code} ·{" "}
+                              {getUnitLabel(fruit.unit)}
+                            </Text>
+                          </View>
                         </View>
 
-                        {/* Meyve bilgileri */}
-                        <View style={styles.fruitTextArea}>
-                          <Text
-                            style={[
-                              styles.modalItemTitle,
-                              selected &&
-                                styles.selectedModalText,
-                            ]}
-                          >
-                            {selected ? "✓ " : ""}
-                            {fruit.name}
-                          </Text>
+                        {/* Seçiliyken aynı kartın içinde miktar kontrolü */}
+                        {selected ? (
+                          <View style={styles.modalQuantityRow}>
+                            <Pressable
+                              style={styles.stepButton}
+                              onPress={() =>
+                                stepQuantity(fruit, -1)
+                              }
+                              hitSlop={8}
+                            >
+                              <Text style={styles.stepButtonText}>
+                                -
+                              </Text>
+                            </Pressable>
 
-                          <Text
-                            style={[
-                              styles.modalItemDescription,
-                              selected &&
-                                styles.selectedModalText,
-                            ]}
-                          >
-                            {fruit.code} ·{" "}
-                            {getUnitLabel(fruit.unit)}
-                          </Text>
-                        </View>
+                            <Text style={styles.modalQuantityValue}>
+                              {String(
+                                quantities[fruit.id] || 0
+                              ).replace(".", ",")}{" "}
+                              {getUnitLabel(fruit.unit)}
+                            </Text>
+
+                            <Pressable
+                              style={styles.stepButton}
+                              onPress={() =>
+                                stepQuantity(fruit, 1)
+                              }
+                              hitSlop={8}
+                            >
+                              <Text style={styles.stepButtonText}>
+                                +
+                              </Text>
+                            </Pressable>
+                          </View>
+                        ) : null}
                       </Pressable>
                     );
                   })}
@@ -854,17 +913,21 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
 
-  addProductButton: {
-    borderWidth: 1,
-    borderColor: colors.green,
-    borderRadius: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-
-  addProductText: {
+  editProductsText: {
     color: colors.green,
     fontWeight: "bold",
+    fontSize: 13,
+  },
+
+  secondaryLink: {
+    alignSelf: "flex-start",
+    marginBottom: 14,
+  },
+
+  secondaryLinkText: {
+    color: colors.green,
+    fontWeight: "700",
+    fontSize: 13,
   },
 
   emptyProductCard: {
@@ -1107,6 +1170,37 @@ const styles = StyleSheet.create({
 
   selectedModalText: {
     color: colors.white,
+  },
+
+  modalQuantityRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 16,
+    marginTop: 12,
+  },
+
+  stepButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.25)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  stepButtonText: {
+    color: colors.white,
+    fontSize: 18,
+    fontWeight: "800",
+  },
+
+  modalQuantityValue: {
+    color: colors.white,
+    fontWeight: "800",
+    fontSize: 15,
+    minWidth: 76,
+    textAlign: "center",
   },
 
   paginationRow: {
