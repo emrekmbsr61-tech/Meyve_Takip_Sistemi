@@ -46,10 +46,14 @@ public class UserService {
                 .orElseThrow();
     }
 
-    // Onay bekleyen (PENDING rolündeki) kullanıcıları listeler. Yalnızca ADMIN çağırabilir.
+    /*
+      Onay bekleyen (PENDING rolündeki) kullanıcıları listeler. Yalnızca ADMIN çağırabilir.
+      Yalnızca isVerified=true olanlar döner: e-posta doğrulamasını henüz
+      tamamlamamış bir kullanıcı, kod girmeden bu listeye düşmemelidir.
+    */
     public List<User> getPendingUsers(Long adminId) {
         requireAdmin(adminId);
-        return userRepository.findByRole(UserRole.PENDING);
+        return userRepository.findByRoleAndIsVerifiedTrue(UserRole.PENDING);
     }
 
     /*

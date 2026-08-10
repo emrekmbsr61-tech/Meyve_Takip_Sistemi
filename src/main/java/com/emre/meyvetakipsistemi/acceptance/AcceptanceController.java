@@ -24,4 +24,14 @@ public class AcceptanceController {
          return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
      }
  }
+
+ // "Tamamlanan İşlemler" ekranı için geçmiş mal kabul kayıtlarını döner.
+ @GetMapping("/completed")
+ public ResponseEntity<?> getCompletedAcceptances(@RequestParam Long userId) {
+     try {
+         return ResponseEntity.ok(acceptanceService.getCompletedAcceptances(userId));
+     } catch (RuntimeException e) {
+         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+     }
+ }
 }

@@ -12,6 +12,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { getNeedLists } from "../../services/needListService";
+import { getTasks } from "../../services/taskService";
 import SoforTaskList from "./SoforTaskList";
 
 const colors = {
@@ -76,46 +77,76 @@ function MalKabulActiveTasks({
   const isReadOnly = currentUser.role === "ADMIN";
 
   /*
-   * Bu projede mağaza personelinin aktif görevi,
-   * henüz mal kabulü tamamlanmamış ihtiyaç planıdır.
+   * Backend'de her meyve ayrı NeedList kaydıdır.
+   * Burada aynı planId altındaki meyveleri tek görev kartı olarak grupluyoruz.
+   */
+  function groupByPlan(openNeeds) {
+    const groupedTasks = {};
+
+    openNeeds.forEach((item) => {
+      if (!groupedTasks[item.planId]) {
+        groupedTasks[item.planId] = {
+          planId: item.planId,
+          storeName: item.storeName,
+          createdDate: item.createdDate,
+          itemCount: 0,
+        };
+      }
+
+      groupedTasks[item.planId].itemCount += 1;
+    });
+
+    return Object.values(groupedTasks);
+  }
+
+  /*
+   * Bu projede mağaza personelinin aktif görevi, kendisine gerçekten
+   * atanmış ve henüz tamamlanmamış bir KABUL (ACCEPTANCE) görevidir.
+   *
+   * Önceden bu liste doğrudan NeedList durumuna bakarak üretiliyordu; bu
+   * yüzden Teslimat aşaması tamamlanmadan bile bir plan "Mal Kabul" kartı
+   * olarak görünebiliyor ve mağaza personeli sırayı atlayıp doğrudan mal
+   * kabul ekranına girebiliyordu. Artık plan listesi GET /api/tasks
+   * üzerinden gelen gerçek ACCEPTANCE görevleriyle sınırlandırılıyor; bir
+   * planın burada görünmesi için Alım -> Toplama -> Teslimat adımlarının
+   * hepsinin tamamlanmış olması (yani TaskAssignmentService.completeDelivery
+   * tarafından bu kullanıcıya bir KABUL görevi atanmış olması) gerekir.
+   *
+   * ADMIN için bu kural uygulanmaz: ADMIN'e hiçbir zaman görev atanmaz, o
+   * yalnızca salt okunur izleme yapar (bkz. isReadOnly), bu yüzden ADMIN
+   * eskisi gibi tüm açık planları NeedList üzerinden görmeye devam eder.
    */
   const loadTasks = useCallback(async () => {
     try {
       setLoading(true);
       setErrorMessage("");
 
-      const needLists = await getNeedLists();
+      if (isReadOnly) {
+        const needLists = await getNeedLists();
+        const openNeeds = needLists.filter(isOpenNeed);
+        setTasks(groupByPlan(openNeeds));
+        return;
+      }
 
-      /*
-        ADMIN tüm kullanıcıların açık kayıtlarını görür (salt okunur).
-        Diğer roller yalnızca kendi oluşturduğu açık kayıtları görür.
-      */
-      const openNeeds = needLists.filter(
-        (item) =>
-          (isReadOnly || item.createdBy === currentUser.id) &&
-          isOpenNeed(item)
+      const [needLists, myTasks] = await Promise.all([
+        getNeedLists(),
+        getTasks(currentUser.id),
+      ]);
+
+      const kabulPlanIds = new Set(
+        (Array.isArray(myTasks) ? myTasks : [])
+          .filter((task) => task.taskType === "ACCEPTANCE" && task.status !== "COMPLETED")
+          .map((task) => task.planId)
       );
 
-      /*
-       * Backend'de her meyve ayrı NeedList kaydıdır.
-       * Burada aynı planId altındaki meyveleri tek görev olarak grupluyoruz.
-       */
-      const groupedTasks = {};
+      const openNeeds = needLists.filter(
+        (item) =>
+          item.createdBy === currentUser.id &&
+          isOpenNeed(item) &&
+          kabulPlanIds.has(item.planId)
+      );
 
-      openNeeds.forEach((item) => {
-        if (!groupedTasks[item.planId]) {
-          groupedTasks[item.planId] = {
-            planId: item.planId,
-            storeName: item.storeName,
-            createdDate: item.createdDate,
-            itemCount: 0,
-          };
-        }
-
-        groupedTasks[item.planId].itemCount += 1;
-      });
-
-      setTasks(Object.values(groupedTasks));
+      setTasks(groupByPlan(openNeeds));
     } catch (error) {
       setTasks([]);
       setErrorMessage(
@@ -298,14 +329,15 @@ const styles = StyleSheet.create({
   },
 
   content: {
-    padding: 20,
-    paddingBottom: 40,
+    padding: 16,
+    paddingBottom: 32,
   },
 
   intro: {
     color: colors.muted,
-    lineHeight: 21,
-    marginBottom: 18,
+    lineHeight: 19,
+    marginBottom: 12,
+    fontSize: 13,
   },
 
   stateContainer: {
@@ -380,9 +412,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 22,
-    padding: 20,
-    marginBottom: 17,
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 10,
   },
 
   cardTop: {
@@ -391,13 +423,13 @@ const styles = StyleSheet.create({
   },
 
   iconBox: {
-    width: 54,
-    height: 54,
-    borderRadius: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 13,
     backgroundColor: colors.greenLight,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 13,
+    marginRight: 11,
   },
 
   titleArea: {
@@ -406,14 +438,14 @@ const styles = StyleSheet.create({
 
   taskTitle: {
     color: colors.text,
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: "800",
   },
 
   taskSubtitle: {
     color: colors.muted,
-    fontSize: 14,
-    marginTop: 4,
+    fontSize: 13,
+    marginTop: 3,
   },
 
   statusBadge: {
@@ -431,8 +463,8 @@ const styles = StyleSheet.create({
 
   infoRow: {
     flexDirection: "row",
-    gap: 20,
-    marginTop: 20,
+    gap: 16,
+    marginTop: 14,
   },
 
   infoArea: {
@@ -455,11 +487,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 9,
+    gap: 8,
     backgroundColor: colors.green,
-    paddingVertical: 15,
-    borderRadius: 15,
-    marginTop: 18,
+    paddingVertical: 13,
+    borderRadius: 13,
+    marginTop: 13,
   },
 
   openButtonText: {

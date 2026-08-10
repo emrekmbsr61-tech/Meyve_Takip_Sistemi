@@ -21,3 +21,27 @@ export async function startTask(id) {
 
   return response.json();
 }
+
+// Şoförün TESLİMAT görevini tamamlar; backend gerekiyorsa yeni bir KABUL görevi atar.
+export async function completeDelivery(id, driverId) {
+  const response = await fetch(
+    `${API_BASE_URL}/tasks/${id}/complete-delivery?driverId=${driverId}`,
+    { method: "PATCH" }
+  );
+
+  const responseText = await response.text();
+
+  let data;
+
+  try {
+    data = responseText ? JSON.parse(responseText) : null;
+  } catch {
+    data = responseText;
+  }
+
+  if (!response.ok) {
+    throw new Error(typeof data === "string" ? data : "Teslimat tamamlanamadı.");
+  }
+
+  return data;
+}

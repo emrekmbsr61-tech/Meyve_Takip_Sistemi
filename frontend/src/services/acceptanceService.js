@@ -16,3 +16,17 @@ export async function createAcceptance(payload) {
 
   return data;
 }
+
+// "Tamamlanan İşlemler" ekranı için geçmiş mal kabul kayıtlarını getirir.
+export async function getCompletedAcceptances(userId) {
+  const response = await fetch(`${API_BASE_URL}/acceptances/completed?userId=${userId}`);
+
+  const responseText = await response.text();
+  const data = responseText ? JSON.parse(responseText) : null;
+
+  if (!response.ok) {
+    throw new Error(data?.message || "Tamamlanan mal kabuller alınamadı.");
+  }
+
+  return data;
+}

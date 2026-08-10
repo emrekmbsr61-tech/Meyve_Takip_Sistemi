@@ -24,6 +24,7 @@ import SoforTaskDetail from "./src/pages/SoforTaskDetail";
 import AdminUserApproval from "./src/pages/AdminUserApproval";
 import PurchaseManagement from "./src/pages/PurchaseManagement";
 import AdminAuditLog from "./src/pages/AdminAuditLog";
+import CompletedAcceptances from "./src/pages/CompletedAcceptances";
 
 
 // Uygulamadaki ekranları bir yığın şeklinde yönetir.
@@ -110,6 +111,15 @@ function PurchaseManagementScreen({ currentUser }) {
 */
 function AdminAuditLogScreen() {
   return <AdminAuditLog />;
+}
+
+/*
+  Ana ekrandaki "Tamamlanan İşlemler" kartına basılınca açılır.
+  Hangi kullanıcının (ve hangi rolün) kendi/geneli göreceğini bilmek için
+  currentUser gönderilir (bkz. AcceptanceService.getCompletedAcceptances).
+*/
+function CompletedAcceptancesScreen({ currentUser }) {
+  return <CompletedAcceptances currentUser={currentUser} />;
 }
 
 /*
@@ -258,6 +268,7 @@ export default function App() {
           <VerifyEmail
             email={pendingEmail}
             onVerified={() => setAuthScreen("login")}
+            onGoBack={() => setAuthScreen("register")}
           />
           <StatusBar style="dark" />
         </>
@@ -438,6 +449,19 @@ export default function App() {
           }}
         >
           {() => <AdminAuditLogScreen />}
+        </Stack.Screen>
+
+        {/*
+          Ana ekrandaki "Tamamlanan İşlemler" kartına basılınca açılır.
+          Bu kart Home ekranında MAGAZA_PERSONELI ve ADMIN rollerine gösterilir.
+        */}
+        <Stack.Screen
+          name="CompletedAcceptances"
+          options={{
+            title: "Tamamlanan İşlemler",
+          }}
+        >
+          {() => <CompletedAcceptancesScreen currentUser={currentUser} />}
         </Stack.Screen>
       </Stack.Navigator>
 

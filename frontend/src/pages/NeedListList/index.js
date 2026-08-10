@@ -3,13 +3,14 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, Text
 import { useFocusEffect } from "@react-navigation/native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
-import { cancelNeedListPlan, getNeedLists, updateNeedList } from "../../services/needListService";
-import { getPlanSummary } from "../../services/planSummaryService";
+import { addExtraItemsToPlan, cancelNeedListPlan, getNeedLists, updateNeedList } from "../../services/needListService";
 import { getUnitLabel } from "../../utils/unit";
 import { getNeedListStatusLabel } from "../../utils/status";
-import PlanSummaryModal from "./PlanSummaryModal";
+import AddExtraProductModal from "./AddExtraProductModal";
 
-// Bu durumdaki bir plan iş akışı olarak tamamlanmıştır (mal kabulü bitmiştir); denetim özeti bu planlar için gösterilir.
+// Bu durumdaki bir plan iş akışı olarak tamamlanmıştır (mal kabulü bitmiştir).
+// Bu ekran yalnızca AKTİF planları gösterir; tamamlanan planlar "Tamamlanan
+// İşlemler" ekranında (CompletedAcceptances) "Sonucu Gör" ile görüntülenir.
 const COMPLETED_STATUS = "APPROVED";
 
 const colors = { green: "#2E7D32", dark: "#102318", background: "#F6F8F6", white: "#FFFFFF", border: "#DFE7E0", muted: "#718077", blue: "#2364E8", blueLight: "#EAF1FF", red: "#E53A32" };
@@ -32,12 +33,14 @@ export default function NeedListList({ currentUser }) {
   const [editNotes, setEditNotes] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
 
-  // planId -> { loading, data, error }. Tamamlanan planların denetim (Plan Sonuç Özeti) sonucunu tutar.
-  const [planSummaries, setPlanSummaries] = useState({});
-  const [summaryModalPlan, setSummaryModalPlan] = useState(null);
-
   // Yalnızca MAGAZA_PERSONELI düzenleyip silebilir; ADMIN ve MAGAZA_MUDURU salt okunur görür.
   const canManage = currentUser.role === "MAGAZA_PERSONELI";
+
+  // MAGAZA_MUDURU, var olan bir plana ekstra ürün ekleyebilir (yeni plan OLUŞTURMAZ).
+  const isManager = currentUser.role === "MAGAZA_MUDURU";
+  const [extraModalPlan, setExtraModalPlan] = useState(null);
+  const [extraSaving, setExtraSaving] = useState(false);
+  const [extraError, setExtraError] = useState("");
 
   const loadNeedLists = useCallback(async () => {
     try { setLoading(true); setMessage(""); const data = await getNeedLists(); setNeedLists([...data].sort((a, b) => b.id - a.id)); setCurrentPage(1); } catch (error) { setMessage(error.message); } finally { setLoading(false); }
@@ -51,74 +54,21 @@ export default function NeedListList({ currentUser }) {
       ? needLists.filter((item) => item.createdBy === currentUser.id)
       : needLists;
 
-    return Object.values(visibleNeedLists.reduce((all, item) => {
+    const grouped = Object.values(visibleNeedLists.reduce((all, item) => {
       // planId eksikse kayıtları yanlışlıkla tek grupta birleştirmemek için her birine kendi anahtarı verilir.
       const groupKey = item.planId !== null && item.planId !== undefined ? item.planId : `missing-${item.id}`;
       if (!all[groupKey]) all[groupKey] = { planId: item.planId, storeId: item.storeId, storeName: item.storeName, createdDate: item.createdDate, createdByName: item.createdByName, status: item.status, notes: item.notes, items: [] };
       all[groupKey].items.push(item);
       return all;
-    }, {})).sort(comparePlans);
+    }, {}));
+
+    // Mal kabulü tamamlanmış (APPROVED) planlar bu ekranda gösterilmez; onlar
+    // artık "Tamamlanan İşlemler" ekranındadır (bkz. dosya başındaki not).
+    return grouped.filter((plan) => plan.status !== COMPLETED_STATUS).sort(comparePlans);
   }, [needLists, canManage, currentUser.id]);
 
   const totalPages = Math.max(1, Math.ceil(plans.length / ITEMS_PER_PAGE));
   const visiblePlans = plans.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
-
-  /*
-    Görünen sayfadaki tamamlanmış (APPROVED) planlar için denetim özetini
-    arka planda getirir; bu sayede kart üzerinde "Tutarlı/Uyarı Var" rozeti ve
-    tutarsız ürün sayısı, kullanıcı "Sonucu Gör"e basmadan önce görünür.
-  */
-  useEffect(() => {
-    const plansToFetch = visiblePlans.filter(
-      (plan) => plan.status === COMPLETED_STATUS && !planSummaries[plan.planId]
-    );
-
-    plansToFetch.forEach((plan) => {
-      setPlanSummaries((current) => ({
-        ...current,
-        [plan.planId]: { loading: true, data: null, error: null },
-      }));
-
-      getPlanSummary(plan.planId, currentUser.id)
-        .then((data) => {
-          setPlanSummaries((current) => ({
-            ...current,
-            [plan.planId]: { loading: false, data, error: null },
-          }));
-        })
-        .catch((error) => {
-          setPlanSummaries((current) => ({
-            ...current,
-            [plan.planId]: { loading: false, data: null, error: error.message },
-          }));
-        });
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visiblePlans, currentUser.id]);
-
-  const openSummary = async (plan) => {
-    setSummaryModalPlan(plan);
-
-    if (planSummaries[plan.planId]?.data) return;
-
-    setPlanSummaries((current) => ({
-      ...current,
-      [plan.planId]: { loading: true, data: null, error: null },
-    }));
-
-    try {
-      const data = await getPlanSummary(plan.planId, currentUser.id);
-      setPlanSummaries((current) => ({
-        ...current,
-        [plan.planId]: { loading: false, data, error: null },
-      }));
-    } catch (error) {
-      setPlanSummaries((current) => ({
-        ...current,
-        [plan.planId]: { loading: false, data: null, error: error.message },
-      }));
-    }
-  };
 
   const startEdit = (item) => { if (!canManage) return; setEditingItem(item); setEditQuantity(String(item.requiredQuantity)); setEditNotes(item.notes || ""); };
   const saveEdit = async () => {
@@ -130,50 +80,57 @@ export default function NeedListList({ currentUser }) {
   // yalnızca bu planId'ye ait NeedList kayıtlarını siler ve DeliveryPlan'ı iptal eder.
   const deletePlan = (plan) => Alert.alert("İhtiyaç planı silinsin mi?", "Bu plandaki tüm ürün kayıtları silinir.", [{ text: "Vazgeç", style: "cancel" }, { text: "Sil", style: "destructive", onPress: async () => { try { await cancelNeedListPlan(plan.planId, currentUser.id); setEditingItem(null); setMessage("İhtiyaç planı silindi."); loadNeedLists(); } catch (error) { setMessage(error.message); } } }]);
 
+  const closeExtraModal = () => { setExtraModalPlan(null); setExtraError(""); };
+
+  // Müdürün seçtiği ekstra ürünleri, YENİ bir plan açmadan, aynı planId'ye ekler.
+  const saveExtraItems = async (items) => {
+    if (!extraModalPlan || items.length === 0) return;
+    try {
+      setExtraSaving(true);
+      setExtraError("");
+      await addExtraItemsToPlan(extraModalPlan.planId, { managerId: currentUser.id, items });
+      closeExtraModal();
+      setMessage("Ekstra ürünler plana eklendi.");
+      loadNeedLists();
+    } catch (error) {
+      setExtraError(error.message);
+    } finally {
+      setExtraSaving(false);
+    }
+  };
+
   return <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-    <View style={styles.headingRow}><View><Text style={styles.heading}>Mevcut İhtiyaçlar</Text><Text style={styles.subheading}>{canManage ? "Oluşturulan planları ve ürünleri yönetin." : "Tüm planları salt okunur görüntüleyin."}</Text></View><View style={styles.count}><Text style={styles.countText}>{plans.length}</Text></View></View>
+    <View style={styles.headingRow}><View><Text style={styles.heading}>Mevcut İhtiyaçlar</Text><Text style={styles.subheading}>{canManage ? "Devam eden planları yönetin." : "Devam eden planları görüntüleyin."}</Text></View><View style={styles.count}><Text style={styles.countText}>{plans.length}</Text></View></View>
     {message ? <Text style={styles.message}>{message}</Text> : null}
     {loading ? <ActivityIndicator color={colors.green} /> : null}
-    {!loading && plans.length === 0 ? <View style={styles.empty}><Ionicons name="clipboard-outline" size={42} color={colors.muted}/><Text style={styles.emptyTitle}>Henüz ihtiyaç planı yok</Text><Text style={styles.emptyText}>Ana menüden yeni ihtiyaç planı oluşturabilirsiniz.</Text></View> : null}
+    {!loading && plans.length === 0 ? <View style={styles.empty}><Ionicons name="clipboard-outline" size={42} color={colors.muted}/><Text style={styles.emptyTitle}>Aktif ihtiyaç planı yok</Text><Text style={styles.emptyText}>Tamamlanan planları "Tamamlanan İşlemler" ekranından görebilirsiniz.</Text></View> : null}
     {visiblePlans.map((plan) => {
-      const isCompleted = plan.status === COMPLETED_STATUS;
-      const summaryEntry = planSummaries[plan.planId];
-      const isWarning = summaryEntry?.data?.consistencyStatus === "WARNING";
-
       return <View key={plan.planId} style={styles.card}>
       <View style={styles.cardHeader}><View style={{ flex: 1 }}><Text style={styles.storeName}>{plan.storeName}</Text><Text style={styles.planMeta}>Plan #{plan.planId} · {formatDate(plan.createdDate)}</Text></View><View style={styles.statusBadge}><Text style={styles.statusText}>{getNeedListStatusLabel(plan.status)}</Text></View></View>
       <View style={styles.personRow}><Ionicons name="person-outline" size={16} color={colors.muted}/><Text style={styles.personText}>{plan.createdByName}</Text><Ionicons name="cube-outline" size={16} color={colors.muted}/><Text style={styles.personText}>{plan.items.length} ürün</Text></View>
 
-      {isCompleted ? <View style={styles.auditRow}>
-        <View style={[styles.auditBadge, isWarning ? styles.auditBadgeWarning : styles.auditBadgeOk]}>
-          <Text style={[styles.auditBadgeText, isWarning ? styles.auditBadgeTextWarning : styles.auditBadgeTextOk]}>
-            {summaryEntry?.loading ? "Denetleniyor..." : summaryEntry?.error ? "Denetim alınamadı" : summaryEntry?.data ? (isWarning ? "Uyarı Var" : "Tutarlı") : "Denetleniyor..."}
-          </Text>
-        </View>
-        {summaryEntry?.data?.inconsistentProductCount > 0 ? <Text style={styles.auditCountText}>{summaryEntry.data.inconsistentProductCount} üründe miktar farkı</Text> : null}
-      </View> : null}
-
       <View style={styles.divider}/>
-      {plan.items.map((item) => <View key={item.id}>{editingItem?.id === item.id ? <View style={styles.editBox}><Text style={styles.editTitle}>{item.fruitName}</Text><TextInput value={editQuantity} onChangeText={(value) => setEditQuantity(cleanQuantity(value))} keyboardType="decimal-pad" style={styles.input}/><TextInput value={editNotes} onChangeText={setEditNotes} placeholder="Not" style={styles.input}/><View style={styles.buttonRow}><Pressable style={styles.saveSmall} onPress={saveEdit}><Text style={styles.smallText}>Kaydet</Text></Pressable><Pressable style={styles.cancelSmall} onPress={() => setEditingItem(null)}><Text style={styles.smallText}>İptal</Text></Pressable></View></View> : <Pressable onPress={() => startEdit(item)} style={styles.itemRow} disabled={!canManage || isCompleted}><View style={styles.dot}/><Text style={styles.itemName}>{item.fruitName}</Text><Text style={styles.itemQuantity}>{item.requiredQuantity} <Text style={styles.itemUnit}>{getUnitLabel(item.fruitUnit)}</Text></Text></Pressable>}{item.updatedByName ? <Text style={styles.updatedText}>Son güncelleyen: {item.updatedByName} · {formatDate(item.updatedDate)}</Text> : null}</View>)}
+      {plan.items.map((item) => <View key={item.id}>{editingItem?.id === item.id ? <View style={styles.editBox}><Text style={styles.editTitle}>{item.fruitName}</Text><TextInput value={editQuantity} onChangeText={(value) => setEditQuantity(cleanQuantity(value))} keyboardType="decimal-pad" style={styles.input}/><TextInput value={editNotes} onChangeText={setEditNotes} placeholder="Not" style={styles.input}/><View style={styles.buttonRow}><Pressable style={styles.saveSmall} onPress={saveEdit}><Text style={styles.smallText}>Kaydet</Text></Pressable><Pressable style={styles.cancelSmall} onPress={() => setEditingItem(null)}><Text style={styles.smallText}>İptal</Text></Pressable></View></View> : <Pressable onPress={() => startEdit(item)} style={styles.itemRow} disabled={!canManage}><View style={styles.dot}/><Text style={styles.itemName}>{item.fruitName}</Text><Text style={styles.itemQuantity}>{item.requiredQuantity} <Text style={styles.itemUnit}>{getUnitLabel(item.fruitUnit)}</Text></Text></Pressable>}{item.updatedByName ? <Text style={styles.updatedText}>Son güncelleyen: {item.updatedByName} · {formatDate(item.updatedDate)}</Text> : null}</View>)}
       {plan.notes ? <View style={styles.note}><Ionicons name="document-text-outline" size={18} color={colors.muted}/><Text style={styles.noteText}>{plan.notes}</Text></View> : null}
-      {canManage && !isCompleted ? <View style={styles.buttonRow}><Pressable style={styles.editButton} onPress={() => startEdit(plan.items[0])}><Ionicons name="pencil-outline" size={19} color={colors.green}/><Text style={styles.editText}>Düzenle</Text></Pressable><Pressable style={styles.deleteButton} onPress={() => deletePlan(plan)}><Ionicons name="trash-outline" size={19} color={colors.red}/><Text style={styles.deleteText}>Sil</Text></Pressable></View> : null}
-      {isCompleted ? <Pressable style={styles.resultButton} onPress={() => openSummary(plan)}><Ionicons name="stats-chart-outline" size={19} color={colors.blue}/><Text style={styles.resultButtonText}>Sonucu Gör</Text></Pressable> : null}
+      {canManage ? <View style={styles.buttonRow}><Pressable style={styles.editButton} onPress={() => startEdit(plan.items[0])}><Ionicons name="pencil-outline" size={19} color={colors.green}/><Text style={styles.editText}>Düzenle</Text></Pressable><Pressable style={styles.deleteButton} onPress={() => deletePlan(plan)}><Ionicons name="trash-outline" size={19} color={colors.red}/><Text style={styles.deleteText}>Sil</Text></Pressable></View> : null}
+      {isManager ? <Pressable style={styles.extraButton} onPress={() => setExtraModalPlan(plan)}><Ionicons name="add-circle-outline" size={19} color={colors.green}/><Text style={styles.extraButtonText}>Ekstra Ürün Ekle</Text></Pressable> : null}
     </View>;
     })}
     {plans.length > ITEMS_PER_PAGE ? <View style={styles.pagination}><Pressable disabled={currentPage === 1} onPress={() => setCurrentPage(currentPage - 1)}><Text style={[styles.pageLink, currentPage === 1 && styles.disabled]}>Önceki</Text></Pressable><Text style={styles.pageLabel}>{currentPage} / {totalPages}</Text><Pressable disabled={currentPage === totalPages} onPress={() => setCurrentPage(currentPage + 1)}><Text style={[styles.pageLink, currentPage === totalPages && styles.disabled]}>Sonraki</Text></Pressable></View> : null}
 
-    <PlanSummaryModal
-      visible={Boolean(summaryModalPlan)}
-      plan={summaryModalPlan}
-      summary={summaryModalPlan ? planSummaries[summaryModalPlan.planId]?.data : null}
-      loading={summaryModalPlan ? Boolean(planSummaries[summaryModalPlan.planId]?.loading) : false}
-      errorMessage={summaryModalPlan ? planSummaries[summaryModalPlan.planId]?.error : null}
-      onClose={() => setSummaryModalPlan(null)}
+    <AddExtraProductModal
+      visible={Boolean(extraModalPlan)}
+      existingFruitIds={extraModalPlan ? extraModalPlan.items.map((item) => item.fruitId) : []}
+      saving={extraSaving}
+      errorMessage={extraError}
+      onSave={saveExtraItems}
+      onClose={closeExtraModal}
     />
   </ScrollView>;
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background }, content: { padding: 20, paddingBottom: 38 }, headingRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 19 }, heading: { color: colors.dark, fontSize: 24, fontWeight: "800" }, subheading: { color: colors.muted, marginTop: 4 }, count: { backgroundColor: "#EAF5EC", width: 35, height: 35, borderRadius: 18, alignItems: "center", justifyContent: "center" }, countText: { color: colors.green, fontWeight: "800" }, message: { color: colors.green, marginBottom: 10, fontWeight: "600" }, card: { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border, borderRadius: 22, padding: 19, marginBottom: 18, shadowColor: "#1A2A1D", shadowOpacity: 0.05, shadowRadius: 12, elevation: 2 }, cardHeader: { flexDirection: "row", alignItems: "flex-start" }, storeName: { color: colors.dark, fontSize: 21, fontWeight: "800" }, planMeta: { color: "#61778D", marginTop: 4 }, statusBadge: { backgroundColor: colors.blueLight, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 17 }, statusText: { color: colors.blue, fontWeight: "800", fontSize: 12 }, personRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 13 }, personText: { color: colors.muted, marginRight: 6 }, divider: { height: 1, backgroundColor: "#ECF0ED", marginVertical: 14 },
-  auditRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 12 }, auditBadge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16 }, auditBadgeOk: { backgroundColor: "#EAF5EC" }, auditBadgeWarning: { backgroundColor: "#FFF4E2" }, auditBadgeText: { fontWeight: "800", fontSize: 12 }, auditBadgeTextOk: { color: colors.green }, auditBadgeTextWarning: { color: "#C96800" }, auditCountText: { color: "#C96800", fontWeight: "600", fontSize: 13 }, resultButton: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8, borderWidth: 1, borderColor: colors.blue, borderRadius: 14, paddingVertical: 13, marginTop: 12 }, resultButtonText: { color: colors.blue, fontWeight: "800", fontSize: 16 }, itemRow: { flexDirection: "row", alignItems: "center", paddingVertical: 5 }, dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#4DB75B", marginRight: 10 }, itemName: { flex: 1, color: colors.dark, fontSize: 16, fontWeight: "600" }, itemQuantity: { color: colors.dark, fontSize: 16, fontWeight: "800" }, itemUnit: { color: colors.muted, fontSize: 12 }, updatedText: { color: colors.muted, fontSize: 11, marginLeft: 17, marginTop: -2, marginBottom: 4 }, note: { flexDirection: "row", gap: 9, alignItems: "center", backgroundColor: colors.background, borderRadius: 14, padding: 12, marginTop: 13 }, noteText: { flex: 1, color: colors.muted }, buttonRow: { flexDirection: "row", gap: 10, marginTop: 17 }, editButton: { flex: 1, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8, borderWidth: 1, borderColor: colors.green, borderRadius: 14, paddingVertical: 13 }, editText: { color: colors.green, fontWeight: "800", fontSize: 16 }, deleteButton: { flex: 1, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8, borderWidth: 1, borderColor: "#F5B8B3", borderRadius: 14, paddingVertical: 13 }, deleteText: { color: colors.red, fontWeight: "800", fontSize: 16 }, editBox: { backgroundColor: "#F7FAF7", borderRadius: 14, padding: 12, marginBottom: 6 }, editTitle: { color: colors.dark, fontWeight: "800", marginBottom: 7 }, input: { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.white, borderRadius: 11, padding: 10, marginTop: 7 }, saveSmall: { flex: 1, backgroundColor: colors.green, borderRadius: 11, padding: 11, alignItems: "center" }, cancelSmall: { flex: 1, backgroundColor: colors.muted, borderRadius: 11, padding: 11, alignItems: "center" }, smallText: { color: colors.white, fontWeight: "800" }, empty: { alignItems: "center", backgroundColor: colors.white, borderRadius: 20, padding: 31, borderWidth: 1, borderColor: colors.border }, emptyTitle: { color: colors.dark, fontSize: 18, fontWeight: "800", marginTop: 10 }, emptyText: { color: colors.muted, textAlign: "center", marginTop: 5 }, pagination: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 4 }, pageLink: { color: colors.green, fontWeight: "800", padding: 10 }, disabled: { color: "#B7C2B9" }, pageLabel: { color: colors.dark, fontWeight: "800" },
+  container: { flex: 1, backgroundColor: colors.background }, content: { padding: 16, paddingBottom: 32 }, headingRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }, heading: { color: colors.dark, fontSize: 22, fontWeight: "800" }, subheading: { color: colors.muted, marginTop: 3, fontSize: 13 }, count: { backgroundColor: "#EAF5EC", width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" }, countText: { color: colors.green, fontWeight: "800" }, message: { color: colors.green, marginBottom: 8, fontWeight: "600" }, card: { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border, borderRadius: 18, padding: 14, marginBottom: 12, shadowColor: "#1A2A1D", shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 }, cardHeader: { flexDirection: "row", alignItems: "flex-start" }, storeName: { color: colors.dark, fontSize: 18, fontWeight: "800" }, planMeta: { color: "#61778D", marginTop: 3, fontSize: 12 }, statusBadge: { backgroundColor: colors.blueLight, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 14 }, statusText: { color: colors.blue, fontWeight: "800", fontSize: 11 }, personRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 8 }, personText: { color: colors.muted, marginRight: 6, fontSize: 13 }, divider: { height: 1, backgroundColor: "#ECF0ED", marginVertical: 10 },
+  itemRow: { flexDirection: "row", alignItems: "center", paddingVertical: 6 }, dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#4DB75B", marginRight: 9 }, itemName: { flex: 1, color: colors.dark, fontSize: 16, fontWeight: "600" }, itemQuantity: { color: colors.dark, fontSize: 16, fontWeight: "800" }, itemUnit: { color: colors.muted, fontSize: 13 }, updatedText: { color: colors.muted, fontSize: 11, marginLeft: 15, marginTop: -2, marginBottom: 3 }, note: { flexDirection: "row", gap: 8, alignItems: "center", backgroundColor: colors.background, borderRadius: 12, padding: 10, marginTop: 10 }, noteText: { flex: 1, color: colors.muted, fontSize: 13 }, buttonRow: { flexDirection: "row", gap: 8, marginTop: 12 }, editButton: { flex: 1, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 7, borderWidth: 1, borderColor: colors.green, borderRadius: 12, paddingVertical: 11 }, editText: { color: colors.green, fontWeight: "800", fontSize: 14 }, deleteButton: { flex: 1, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 7, borderWidth: 1, borderColor: "#F5B8B3", borderRadius: 12, paddingVertical: 11 }, deleteText: { color: colors.red, fontWeight: "800", fontSize: 14 }, editBox: { backgroundColor: "#F7FAF7", borderRadius: 12, padding: 10, marginBottom: 6 }, editTitle: { color: colors.dark, fontWeight: "800", marginBottom: 6, fontSize: 14 }, input: { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.white, borderRadius: 10, padding: 9, marginTop: 6 }, saveSmall: { flex: 1, backgroundColor: colors.green, borderRadius: 10, padding: 10, alignItems: "center" }, cancelSmall: { flex: 1, backgroundColor: colors.muted, borderRadius: 10, padding: 10, alignItems: "center" }, smallText: { color: colors.white, fontWeight: "800" }, empty: { alignItems: "center", backgroundColor: colors.white, borderRadius: 18, padding: 26, borderWidth: 1, borderColor: colors.border }, emptyTitle: { color: colors.dark, fontSize: 16, fontWeight: "800", marginTop: 8 }, emptyText: { color: colors.muted, textAlign: "center", marginTop: 4, fontSize: 13 }, pagination: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 4 }, pageLink: { color: colors.green, fontWeight: "800", padding: 8 }, disabled: { color: "#B7C2B9" }, pageLabel: { color: colors.dark, fontWeight: "800" },
+  extraButton: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 7, borderWidth: 1, borderColor: colors.green, borderStyle: "dashed", borderRadius: 12, paddingVertical: 11, marginTop: 12 }, extraButtonText: { color: colors.green, fontWeight: "800", fontSize: 14 },
 });

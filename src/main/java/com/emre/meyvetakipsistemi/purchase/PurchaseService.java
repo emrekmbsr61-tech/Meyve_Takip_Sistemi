@@ -154,7 +154,11 @@ public class PurchaseService {
                             fruit == null ? null : fruit.getCode(),
                             fruit == null ? null : fruit.getUnit(),
                             totalRequiredQuantity,
-                            alreadyPurchased
+                            alreadyPurchased,
+                            fruit == null ? null : fruit.getImagePath(),
+                            fruit == null || fruit.getProfitMarginPercent() == null
+                                    ? 20.0
+                                    : fruit.getProfitMarginPercent()
                     );
                 })
                 .toList();
@@ -222,7 +226,10 @@ public class PurchaseService {
 
             savedPurchases.add(purchaseRepository.save(purchase));
 
-            priceHistoryService.recordPrice(item.getFruitId(), item.getSalesPrice());
+            // Not: önceden burada salesPrice kaydediliyordu; PriceHistory hiçbir yerde
+            // okunmadığı (yalnızca yazılıyordu) için bu değişiklik güvenlidir. "Son alış
+            // fiyatları" özelliği alış (unitPrice) geçmişini gösterdiğinden buraya alındı.
+            priceHistoryService.recordPrice(item.getFruitId(), item.getUnitPrice());
         }
 
         completeAlimTaskAndAssignToplama(request.getPlanId(), manager);

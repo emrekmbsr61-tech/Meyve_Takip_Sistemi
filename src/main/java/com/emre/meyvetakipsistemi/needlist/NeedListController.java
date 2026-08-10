@@ -1,5 +1,6 @@
 package com.emre.meyvetakipsistemi.needlist;
 
+import com.emre.meyvetakipsistemi.needlist.dto.AddExtraItemsRequest;
 import com.emre.meyvetakipsistemi.needlist.dto.NeedListPlanRequest;
 import com.emre.meyvetakipsistemi.needlist.dto.NeedListRequest;
 import com.emre.meyvetakipsistemi.needlist.dto.NeedListResponse;
@@ -39,6 +40,20 @@ public class NeedListController {
     public ResponseEntity<?> createNeedListPlan(@RequestBody NeedListPlanRequest request) {
         try {
             return ResponseEntity.status(HttpStatus.CREATED).body(needListService.createNeedListPlan(request));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        }
+    }
+
+    /*
+      Müdürün, var olan bir plana ekstra ürün eklemesini sağlar. Yeni bir
+      DeliveryPlan/ihtiyaç planı OLUŞTURMAZ; aynı planId'ye yeni NeedList
+      satırları ekler (bkz. NeedListService.addExtraItemsToPlan).
+    */
+    @PostMapping("/plan/{planId}/items")
+    public ResponseEntity<?> addExtraItems(@PathVariable Long planId, @RequestBody AddExtraItemsRequest request) {
+        try {
+            return ResponseEntity.status(HttpStatus.CREATED).body(needListService.addExtraItemsToPlan(planId, request));
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         }

@@ -47,6 +47,26 @@ function getActionTypeLabel(actionType) {
 }
 
 /*
+  Backend'in entityType alanı Java sınıf adıdır (örn. "TaskAssignment",
+  "NeedList") — kullanıcıya ham hâliyle gösterilmez, burada Türkçeleştirilir.
+  Eşleşme bulunamazsa (yeni bir entity eklenip burası unutulursa bile ekran
+  çökmesin diye) olduğu gibi gösterilir.
+*/
+const ENTITY_TYPE_LABELS = {
+  User: "Kullanıcı",
+  NeedList: "İhtiyaç",
+  DeliveryPlan: "Plan",
+  Purchase: "Alım",
+  Collection: "Toplama",
+  TaskAssignment: "Görev",
+  Acceptance: "Mal Kabul",
+};
+
+function getEntityTypeLabel(entityType) {
+  return ENTITY_TYPE_LABELS[entityType] || entityType;
+}
+
+/*
   İşlem türü önekine göre kaydın hangi kategoriye ait olduğunu belirler.
   Sıra önemlidir: bir kayıt yalnızca ilk eşleşen kategoriye girer, hiçbir
   kategoriye girmeyenler "Diğer İşlemler" altında toplanır.
@@ -241,20 +261,22 @@ export default function AdminAuditLog() {
                     ) : (
                       category.logs.map((log) => (
                         <View key={log.id} style={styles.card}>
-                          <View style={styles.badge}>
-                            <Text style={styles.badgeText}>{getActionTypeLabel(log.actionType)}</Text>
-                          </View>
-
-                          <Text style={styles.userName}>{log.userFullName || "Sistem"}</Text>
-
-                          {log.description ? (
-                            <Text style={styles.description}>{log.description}</Text>
-                          ) : null}
+                          {/*
+                            Kullanıcıya ham backend description'ı (teknik ID'ler,
+                            "Kayıt ID: X" gibi ekler içerebiliyordu) yerine, zaten
+                            var olan userFullName + actionType alanlarından
+                            üretilen sade bir cümle gösterilir. Örnek:
+                            "Emre Kumbasar — Alım kaydı oluşturuldu"
+                          */}
+                          <Text style={styles.logLine}>
+                            <Text style={styles.logUser}>{log.userFullName || "Sistem"}</Text>
+                            <Text style={styles.logAction}> — {getActionTypeLabel(log.actionType)}</Text>
+                          </Text>
 
                           <View style={styles.metaRow}>
                             {log.entityId != null ? (
                               <Text style={styles.metaText}>
-                                {log.entityType ? `${log.entityType} #${log.entityId}` : `#${log.entityId}`}
+                                {log.entityType ? `${getEntityTypeLabel(log.entityType)} ` : ""}#{log.entityId}
                               </Text>
                             ) : null}
 
@@ -323,21 +345,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 14,
-    padding: 14,
-    marginTop: 10,
+    borderRadius: 12,
+    padding: 11,
+    marginTop: 8,
   },
-  badge: {
-    alignSelf: "flex-start",
-    backgroundColor: colors.greenLight,
-    borderRadius: 16,
-    paddingHorizontal: 11,
-    paddingVertical: 5,
-    marginBottom: 8,
-  },
-  badgeText: { color: colors.green, fontWeight: "800", fontSize: 12 },
-  userName: { color: colors.dark, fontSize: 16, fontWeight: "800" },
-  description: { color: colors.dark, marginTop: 6, lineHeight: 20 },
+  logLine: { fontSize: 14, lineHeight: 19 },
+  logUser: { color: colors.dark, fontWeight: "800" },
+  logAction: { color: colors.muted, fontWeight: "600" },
   metaRow: {
     flexDirection: "row",
     justifyContent: "space-between",

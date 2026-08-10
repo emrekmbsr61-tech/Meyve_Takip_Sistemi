@@ -188,7 +188,7 @@ public class CollectionService {
             savedCollections.add(collectionRepository.save(collection));
         }
 
-        completeToplamaAndAssignKabul(request.getPlanId(), toplamaTask, driver);
+        completeToplamaAndAssignTeslimat(request.getPlanId(), toplamaTask, driver);
 
         auditLogService.createLog(
                 driver.getId(),
@@ -232,14 +232,18 @@ public class CollectionService {
     }
 
     /*
-      Collection tamamlandığında:
+      Bu metodun görevi: Collection (toplama/alım) tamamlandığında iki şeyi yapmak:
       1) TOPLAMA görevi COMPLETED yapılır.
-      2) Aynı plan için daha önce oluşturulmuş bir KABUL (ACCEPTANCE) görevi yoksa,
-         planı oluşturan MAGAZA_PERSONELI kullanıcısına (bkz. resolvePlanOwner) yeni
-         bir KABUL görevi atanır. PurchaseService.completeAlimTaskAndAssignToplama
-         ile aynı desendir.
+      2) Aynı plan için daha önce oluşturulmuş bir TESLİMAT görevi yoksa, TOPLAMA'yı
+         tamamlayan AYNI şoföre yeni bir TESLİMAT görevi atanır — artık burada
+         doğrudan mağaza personeline KABUL (ACCEPTANCE) görevi atanmıyor. KABUL görevi
+         artık TESLİMAT tamamlandığında, TaskAssignmentService.completeDelivery()
+         içinde oluşturuluyor (bkz. o metottaki assignKabulIfNeeded). Böylece akış:
+         Alım Görevi (TOPLAMA) -> Teslimat Görevi (TESLIMAT) -> Kabul Görevi (ACCEPTANCE)
+         şeklinde üç adıma çıkar; PurchaseService.completeAlimTaskAndAssignToplama ile
+         aynı "aşama tamamlanınca bir sonraki görevi oluştur" deseni korunur.
     */
-    private void completeToplamaAndAssignKabul(Long planId, TaskAssignment toplamaTask, User driver) {
+    private void completeToplamaAndAssignTeslimat(Long planId, TaskAssignment toplamaTask, User driver) {
         toplamaTask.setStatus(TaskStatus.COMPLETED);
         taskAssignmentRepository.save(toplamaTask);
 
@@ -249,28 +253,26 @@ public class CollectionService {
                 AuditActionType.TASK_COMPLETED,
                 "TaskAssignment",
                 toplamaTask.getId(),
-                "Plan #" + planId + " için TOPLAMA görevi tamamlandı."
+                "Plan #" + planId + " için ALIM (toplama) görevi tamamlandı."
         );
 
-        boolean kabulTaskExists = taskAssignmentRepository
-                .findByPlanIdAndTaskType(planId, TaskType.ACCEPTANCE)
+        boolean teslimatTaskExists = taskAssignmentRepository
+                .findByPlanIdAndTaskType(planId, TaskType.TESLIMAT)
                 .isPresent();
 
-        if (kabulTaskExists) {
+        if (teslimatTaskExists) {
             return;
         }
 
-        User planOwner = resolvePlanOwner(planId);
+        TaskAssignment teslimatTask = new TaskAssignment();
+        teslimatTask.setPlanId(planId);
+        teslimatTask.setAssignedUserId(driver.getId());
+        teslimatTask.setAssignedAt(LocalDateTime.now());
+        teslimatTask.setDueDate(LocalDateTime.now().plusHours(TASK_DEADLINE_HOURS));
+        teslimatTask.setTaskType(TaskType.TESLIMAT);
+        teslimatTask.setStatus(TaskStatus.PENDING);
 
-        TaskAssignment kabulTask = new TaskAssignment();
-        kabulTask.setPlanId(planId);
-        kabulTask.setAssignedUserId(planOwner.getId());
-        kabulTask.setAssignedAt(LocalDateTime.now());
-        kabulTask.setDueDate(LocalDateTime.now().plusHours(TASK_DEADLINE_HOURS));
-        kabulTask.setTaskType(TaskType.ACCEPTANCE);
-        kabulTask.setStatus(TaskStatus.PENDING);
-
-        TaskAssignment savedTask = taskAssignmentRepository.save(kabulTask);
+        TaskAssignment savedTask = taskAssignmentRepository.save(teslimatTask);
 
         auditLogService.createLog(
                 driver.getId(),
@@ -278,50 +280,51 @@ public class CollectionService {
                 AuditActionType.TASK_ASSIGNED,
                 "TaskAssignment",
                 savedTask.getId(),
-                "Plan #" + planId + " için " + planOwner.getFullName() + " kullanıcısına kabul görevi atandı."
+                "Plan #" + planId + " için " + driver.getFullName() + " kullanıcısına teslimat görevi atandı."
         );
     }
 
     /*
-      KABUL görevinin kime atanacağını belirler: aynı plana ait tüm NeedList
-      kayıtlarının createdBy değeri aynı olmalıdır (bir plan her zaman tek bir
-      MAGAZA_PERSONELI tarafından oluşturulur, bkz. NeedListService.requireCreator).
-      Farklı createdBy değerleri varsa (beklenmeyen/bozuk veri durumu) görev
-      oluşturulmaz, anlaşılır bir hata fırlatılır.
+      Bu metodun görevi: TESLİMAT görevi ekranında ("Teslimat Görevi") şoföre
+      gösterilecek bilgiyi hazırlamak. Kendi kaydettiği Collection satırlarını
+      (fruitName, fruitUnit, collectedQuantity) ve mağaza bilgisini döner — yani
+      "az önce topladığım ve şimdi teslim edeceğim ürünler" listesidir. Purchase
+      kaydındaki fiyat bilgilerine burada da hiç bakılmaz (Collection zaten fiyat
+      alanı içermiyor).
     */
-    private User resolvePlanOwner(Long planId) {
-        List<NeedList> needs = needListRepository.findByPlanId(planId);
+    public DeliverySummaryResponse getDeliverySummary(Long driverId, Long planId) {
+        User driver = requireDriver(driverId);
 
-        if (needs.isEmpty()) {
-            throw new RuntimeException(
-                    "Bu plana ait ihtiyaç kaydı bulunamadığı için kabul görevi oluşturulamadı"
-            );
+        TaskAssignment teslimatTask = taskAssignmentRepository
+                .findByPlanIdAndTaskType(planId, TaskType.TESLIMAT)
+                .orElseThrow(() -> new RuntimeException("Bu plan için aktif bir teslimat görevi bulunamadı"));
+
+        if (!driver.getId().equals(teslimatTask.getAssignedUserId())) {
+            throw new RuntimeException("Bu teslimat görevi size atanmamış");
         }
 
-        Set<Long> createdByIds = needs.stream()
-                .map(NeedList::getCreatedBy)
-                .collect(Collectors.toSet());
+        List<Collection> collections = collectionRepository.findByPlanId(planId);
 
-        if (createdByIds.size() > 1) {
-            throw new RuntimeException(
-                    "Bu plana ait ihtiyaç kayıtları farklı kullanıcılara ait olduğu için kabul görevi oluşturulamadı"
-            );
+        if (collections.isEmpty()) {
+            throw new RuntimeException("Bu plana ait toplama kaydı bulunamadı");
         }
 
-        Long ownerId = createdByIds.iterator().next();
+        DeliveryPlanService.PlanStoreInfo storeInfo = deliveryPlanService.resolveStoreInfo(planId);
 
-        User owner = userRepository.findById(ownerId)
-                .orElseThrow(() -> new RuntimeException(
-                        "İhtiyaç planını oluşturan kullanıcı bulunamadığı için kabul görevi oluşturulamadı"
-                ));
+        List<DeliverySummaryItemResponse> items = collections.stream()
+                .map(collection -> {
+                    Fruit fruit = fruitRepository.findById(collection.getFruitId()).orElse(null);
 
-        if (owner.getRole() != UserRole.MAGAZA_PERSONELI) {
-            throw new RuntimeException(
-                    "İhtiyaç planını oluşturan kullanıcının rolü mağaza personeli değil, kabul görevi oluşturulamadı"
-            );
-        }
+                    return new DeliverySummaryItemResponse(
+                            collection.getFruitId(),
+                            fruit == null ? "Bilinmeyen meyve" : fruit.getName(),
+                            fruit == null ? null : fruit.getUnit(),
+                            collection.getCollectedQuantity()
+                    );
+                })
+                .toList();
 
-        return owner;
+        return new DeliverySummaryResponse(planId, storeInfo.storeId(), storeInfo.storeName(), items);
     }
 
     // Çağıranın var olan ve SOFOR rolünde bir kullanıcı olduğunu doğrular.

@@ -25,7 +25,8 @@ const colors = {
 
 const TASK_TYPE_LABELS = {
   ALIM: "Alım",
-  TOPLAMA: "Toplama",
+  TOPLAMA: "Alım Görevi",
+  TESLIMAT: "Teslimat Görevi",
   ACCEPTANCE: "Mal Kabul",
 };
 
@@ -48,10 +49,13 @@ function formatRemaining(dueDate) {
 }
 
 /*
-  ŞOFÖR rolüne atanmış görevleri listeler (şu an için sistemde yalnızca
-  TOPLAMA görevi SOFOR'a atanıyor, bkz. PurchaseService.completeAlimTaskAndAssignToplama).
-  ActiveTasks/index.js'teki Mal Kabul akışından ayrı tutulur çünkü o akış
-  NeedList.createdBy üzerinden çalışır ve SOFOR hiç NeedList oluşturmaz.
+  ŞOFÖR rolüne atanmış görevleri listeler. Sistemde SOFOR'a iki tür görev
+  sırayla atanır: önce TOPLAMA ("Alım Görevi", bkz.
+  PurchaseService.completeAlimTaskAndAssignToplama), o tamamlanınca aynı
+  şoföre TESLIMAT ("Teslimat Görevi", bkz.
+  CollectionService.completeToplamaAndAssignTeslimat). ActiveTasks/index.js'teki
+  Mal Kabul akışından ayrı tutulur çünkü o akış NeedList.createdBy üzerinden
+  çalışır ve SOFOR hiç NeedList oluşturmaz.
 */
 export default function SoforTaskList({ currentUser, navigation }) {
   const [tasks, setTasks] = useState([]);
@@ -158,8 +162,8 @@ export default function SoforTaskList({ currentUser, navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: 20, paddingBottom: 40 },
-  intro: { color: colors.muted, lineHeight: 21, marginBottom: 18 },
+  content: { padding: 16, paddingBottom: 32 },
+  intro: { color: colors.muted, lineHeight: 19, marginBottom: 12, fontSize: 13 },
   stateContainer: { alignItems: "center", paddingVertical: 35 },
   stateText: { color: colors.muted, marginTop: 10 },
   errorCard: {
@@ -194,35 +198,35 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 22,
-    padding: 20,
-    marginBottom: 17,
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 10,
   },
   cardTop: { flexDirection: "row", alignItems: "center" },
   iconBox: {
-    width: 54,
-    height: 54,
-    borderRadius: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 13,
     backgroundColor: colors.greenLight,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 13,
+    marginRight: 11,
   },
   titleArea: { flex: 1 },
-  taskTitle: { color: colors.text, fontSize: 20, fontWeight: "800" },
-  taskSubtitle: { color: colors.muted, fontSize: 14, marginTop: 4 },
+  taskTitle: { color: colors.text, fontSize: 17, fontWeight: "800" },
+  taskSubtitle: { color: colors.muted, fontSize: 13, marginTop: 3 },
   statusBadge: {
     backgroundColor: colors.greenLight,
-    paddingHorizontal: 11,
-    paddingVertical: 7,
-    borderRadius: 18,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
   },
   statusText: { color: colors.green, fontWeight: "700", fontSize: 12 },
   footerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 14,
+    marginTop: 10,
   },
-  remainingText: { color: colors.muted, fontWeight: "600" },
+  remainingText: { color: colors.muted, fontWeight: "600", fontSize: 13 },
 });

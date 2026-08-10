@@ -10,7 +10,8 @@ import {
   View,
 } from "react-native";
 
-import { createCollectionsForPlan, getCollectionPlanDetail } from "../../services/collectionService";
+import { createCollectionsForPlan, getCollectionPlanDetail, getDeliverySummary } from "../../services/collectionService";
+import { completeDelivery } from "../../services/taskService";
 import { cleanQuantity, getUnitLabel } from "../../utils/unit";
 
 const colors = {
@@ -26,9 +27,13 @@ const colors = {
   orangeLight: "#FFF4E2",
 };
 
+// TOPLAMA backend'de hâlâ bu isimle duruyor (mevcut veritabanı kayıtlarını bozmamak
+// için enum adı değiştirilmedi), ama şoföre artık "Alım Görevi" olarak gösteriliyor.
+// TESLIMAT, Alım Görevi tamamlandığında aynı şoföre otomatik atanan yeni görev türüdür.
 const TASK_TYPE_LABELS = {
   ALIM: "Alım",
-  TOPLAMA: "Toplama",
+  TOPLAMA: "Alım Görevi",
+  TESLIMAT: "Teslimat Görevi",
   ACCEPTANCE: "Mal Kabul",
 };
 
@@ -68,27 +73,39 @@ function formatRemaining(dueDate) {
   navigation parametresiyle gelir; backend'de tek bir görevi id ile getiren bir
   GET /api/tasks/{id} endpoint'i yok, bu yüzden SoforTaskList'in zaten sahip
   olduğu görev nesnesi doğrudan buraya taşınır. driverId olarak da bu görevin
-  assignedUserId'si kullanılır (SoforTaskList her zaman yalnızca giriş yapan
-  şoförün kendi görevlerini getirdiği için bu değer her zaman currentUser.id
-  ile aynıdır).
+  assignedUserId'si kullanılır.
 
-  Ürün/tedarikçi bilgisi GET /api/collections/plans/{planId}?driverId= üzerinden
-  gelir. Bu endpoint şoföre yalnızca güvenli alanları (planId, mağaza, fruitId,
-  fruitName, fruitUnit, supplierCode, supplierName) döner; purchasedQuantity,
-  unitPrice, totalPrice, salesPrice ve mağazanın istediği miktar (requiredQuantity)
-  hiçbir zaman backend'den gelmez, bu yüzden burada da hiç gösterilmez.
+  Görev türüne göre iki tamamen ayrı bölüm gösterilir:
+    - TOPLAMA ("Alım Görevi"): mevcut toplama formu (ürün başına miktar girişi),
+      "Alımı Tamamla" butonuyla biter. Bu bölümün mantığı ÖNCEKİ sürümle aynıdır,
+      sadece başlık/buton metinleri değişti.
+    - TESLIMAT ("Teslimat Görevi"): salt okunur bir özet (plan, mağaza, az önce
+      toplanan ürün/miktarlar) + tek bir "Teslimatı Tamamla" butonu.
+
+  Daha önce burada bulunan TransportLog tabanlı "Hale Vardım" / "Mağazaya Teslim
+  Ettim" / planlanan-gerçek varış saatleri / 45 dakikalık pencere gösterimi
+  tamamen kaldırıldı (TransportTimeline bileşeni silindi, burada hiç
+  kullanılmıyor).
 */
 export default function SoforTaskDetail({ route, navigation }) {
   const task = route.params?.task || {};
 
+  const isAlimTask = task.taskType === "TOPLAMA";
+  const isTeslimatTask = task.taskType === "TESLIMAT";
+  const alreadyCompleted = task.status === "COMPLETED";
+
+  // ---- Alım Görevi (toplama formu) verisi ----
   const [planDetail, setPlanDetail] = useState(null);
   const [collectedValues, setCollectedValues] = useState({});
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const isToplamaTask = task.taskType === "TOPLAMA";
-  const alreadyCompleted = task.status === "COMPLETED";
+  // ---- Teslimat Görevi verisi ----
+  const [deliverySummary, setDeliverySummary] = useState(null);
+  const [deliveryLoading, setDeliveryLoading] = useState(true);
+  const [deliveryError, setDeliveryError] = useState("");
+  const [completingDelivery, setCompletingDelivery] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -111,17 +128,51 @@ export default function SoforTaskDetail({ route, navigation }) {
         setCollectedValues(initialValues);
       } catch (error) {
         if (isMounted) {
-          setErrorMessage(error.message || "Toplama detayı alınamadı.");
+          setErrorMessage(error.message || "Alım detayı alınamadı.");
         }
       } finally {
         if (isMounted) setLoading(false);
       }
     }
 
-    if (task.planId && task.assignedUserId && isToplamaTask && !alreadyCompleted) {
+    if (task.planId && task.assignedUserId && isAlimTask && !alreadyCompleted) {
       loadPlanDetail();
     } else {
       setLoading(false);
+    }
+
+    return () => {
+      isMounted = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task.planId, task.assignedUserId]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadDeliverySummary() {
+      try {
+        setDeliveryLoading(true);
+        setDeliveryError("");
+
+        const summary = await getDeliverySummary(task.planId, task.assignedUserId);
+
+        if (isMounted) {
+          setDeliverySummary(summary);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setDeliveryError(error.message || "Teslimat bilgisi alınamadı.");
+        }
+      } finally {
+        if (isMounted) setDeliveryLoading(false);
+      }
+    }
+
+    if (task.planId && task.assignedUserId && isTeslimatTask && !alreadyCompleted) {
+      loadDeliverySummary();
+    } else {
+      setDeliveryLoading(false);
     }
 
     return () => {
@@ -154,7 +205,7 @@ export default function SoforTaskDetail({ route, navigation }) {
     if (hasInvalidQuantity) {
       Alert.alert(
         "Eksik bilgi",
-        "Lütfen tüm ürünler için toplanan miktarı (sıfırdan büyük) girin."
+        "Lütfen tüm ürünler için alınan miktarı (sıfırdan büyük) girin."
       );
       return;
     }
@@ -175,22 +226,41 @@ export default function SoforTaskDetail({ route, navigation }) {
         }),
       });
 
-      Alert.alert("Toplama tamamlandı", "Toplama kaydınız başarıyla kaydedildi.", [
+      Alert.alert("Alım tamamlandı", "Alım kaydınız başarıyla kaydedildi.", [
         {
           text: "Tamam",
           /*
             Bu ekrana her zaman ActiveTasks (SoforTaskList) içinden geçiliyor
             (bkz. SoforTaskList.js -> navigation.navigate("SoforTaskDetail", { task })).
             goBack() hem bu ekranı yığından kaldırır hem de ActiveTasks'ın
-            useFocusEffect'ini tetikleyerek görev listesini yeniler.
+            useFocusEffect'ini tetikleyerek görev listesini yeniler (artık burada
+            aynı plan için yeni oluşan Teslimat Görevi görünecektir).
           */
           onPress: () => navigation.goBack(),
         },
       ]);
     } catch (error) {
-      Alert.alert("Kaydedilemedi", error.message || "Toplama kaydı oluşturulamadı.");
+      Alert.alert("Kaydedilemedi", error.message || "Alım kaydı oluşturulamadı.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleCompleteDelivery = async () => {
+    if (completingDelivery) return;
+
+    setCompletingDelivery(true);
+
+    try {
+      await completeDelivery(task.id, task.assignedUserId);
+
+      Alert.alert("Teslimat tamamlandı", "Teslimat kaydınız başarıyla tamamlandı.", [
+        { text: "Tamam", onPress: () => navigation.goBack() },
+      ]);
+    } catch (error) {
+      Alert.alert("Kaydedilemedi", error.message || "Teslimat tamamlanamadı.");
+    } finally {
+      setCompletingDelivery(false);
     }
   };
 
@@ -210,17 +280,10 @@ export default function SoforTaskDetail({ route, navigation }) {
       </View>
 
       {alreadyCompleted ? (
-        // Tamamlanan görevde kalan süre, miktar alanları ve buton hiç gösterilmez.
         <View style={styles.infoCard}>
           <Text style={styles.sectionNote}>Bu görev tamamlandı.</Text>
         </View>
-      ) : !isToplamaTask ? (
-        <View style={styles.infoCard}>
-          <Text style={styles.sectionNote}>
-            Bu görev türü için toplama ekranı bulunmuyor.
-          </Text>
-        </View>
-      ) : (
+      ) : isAlimTask ? (
         <>
           {loading ? (
             <ActivityIndicator color={colors.green} style={styles.loadingSpacing} />
@@ -232,13 +295,6 @@ export default function SoforTaskDetail({ route, navigation }) {
             </View>
           ) : null}
 
-          {/*
-            Mağaza/son tarih/kalan süre bilgisi yalnızca backend'den plan detayı
-            başarıyla geldiyse gösterilir; resolveStoreInfo mağaza adını
-            çözemezse bile her zaman "Mağaza #<id>" gibi anlamlı bir metin
-            döner, bu yüzden burada asla "Bulunamadı" gibi belirsiz bir metin
-            yazılmaz.
-          */}
           {!loading && !errorMessage && planDetail ? (
             <>
               <View style={styles.infoCard}>
@@ -264,7 +320,7 @@ export default function SoforTaskDetail({ route, navigation }) {
               </View>
 
               <View style={styles.infoCard}>
-                <Text style={styles.sectionTitle}>Topladığınız Ürünler</Text>
+                <Text style={styles.sectionTitle}>Alacağınız Ürünler</Text>
                 <Text style={styles.sectionNote}>
                   Aşağıya, müdürün alım miktarından bağımsız olarak kendi
                   saydığınız miktarı girin.
@@ -288,7 +344,7 @@ export default function SoforTaskDetail({ route, navigation }) {
                       </Text>
 
                       <Text style={styles.label}>
-                        Toplanan Miktar ({getUnitLabel(item.fruitUnit)})
+                        Alınan Miktar ({getUnitLabel(item.fruitUnit)})
                       </Text>
                       <TextInput
                         value={values.collectedQuantity}
@@ -318,7 +374,7 @@ export default function SoforTaskDetail({ route, navigation }) {
                     disabled={submitting}
                   >
                     <Text style={styles.submitButtonText}>
-                      {submitting ? "Kaydediliyor..." : "Toplamayı Tamamla"}
+                      {submitting ? "Kaydediliyor..." : "Alımı Tamamla"}
                     </Text>
                   </Pressable>
                 ) : null}
@@ -326,6 +382,88 @@ export default function SoforTaskDetail({ route, navigation }) {
             </>
           ) : null}
         </>
+      ) : isTeslimatTask ? (
+        <>
+          {deliveryLoading ? (
+            <ActivityIndicator color={colors.orange} style={styles.loadingSpacing} />
+          ) : null}
+
+          {!deliveryLoading && deliveryError ? (
+            <View style={styles.infoCard}>
+              <Text style={styles.errorText}>{deliveryError}</Text>
+            </View>
+          ) : null}
+
+          {!deliveryLoading && !deliveryError && deliverySummary ? (
+            <>
+              <View style={styles.infoCard}>
+                <Text style={styles.sectionTitle}>Teslimat Bilgileri</Text>
+
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Mağaza</Text>
+                  <Text style={styles.infoValue}>
+                    {deliverySummary.storeName}
+                    {deliverySummary.storeId ? ` (#${deliverySummary.storeId})` : ""}
+                  </Text>
+                </View>
+
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Plan</Text>
+                  <Text style={styles.infoValue}>#{deliverySummary.planId}</Text>
+                </View>
+
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Son tarih</Text>
+                  <Text style={styles.infoValue}>{formatDateTime(task.dueDate)}</Text>
+                </View>
+
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Kalan süre</Text>
+                  <Text style={styles.infoValue}>{formatRemaining(task.dueDate)}</Text>
+                </View>
+              </View>
+
+              <View style={styles.infoCard}>
+                <Text style={styles.sectionTitle}>Teslim Edilecek Ürünler</Text>
+                <Text style={styles.sectionNote}>
+                  Alım Görevi sırasında kaydettiğiniz miktarlar aşağıda özetlenmiştir.
+                </Text>
+
+                {(deliverySummary.items || []).length === 0 ? (
+                  <Text style={styles.emptyText}>Bu plana ait ürün bulunamadı.</Text>
+                ) : null}
+
+                {(deliverySummary.items || []).map((item) => (
+                  <View key={item.fruitId} style={styles.deliveryRow}>
+                    <Text style={styles.productName}>{item.fruitName}</Text>
+                    <Text style={styles.deliveryQuantity}>
+                      {item.collectedQuantity} {getUnitLabel(item.fruitUnit)}
+                    </Text>
+                  </View>
+                ))}
+
+                <Pressable
+                  style={[
+                    styles.deliveryButton,
+                    completingDelivery && styles.submitButtonDisabled,
+                  ]}
+                  onPress={handleCompleteDelivery}
+                  disabled={completingDelivery}
+                >
+                  <Text style={styles.submitButtonText}>
+                    {completingDelivery ? "Kaydediliyor..." : "Teslimatı Tamamla"}
+                  </Text>
+                </Pressable>
+              </View>
+            </>
+          ) : null}
+        </>
+      ) : (
+        <View style={styles.infoCard}>
+          <Text style={styles.sectionNote}>
+            Bu görev türü için bir detay ekranı bulunmuyor.
+          </Text>
+        </View>
       )}
     </ScrollView>
   );
@@ -404,4 +542,24 @@ const styles = StyleSheet.create({
   },
   submitButtonDisabled: { opacity: 0.6 },
   submitButtonText: { color: colors.white, fontWeight: "800", fontSize: 17 },
+  deliveryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 10,
+  },
+  deliveryQuantity: { color: colors.orange, fontWeight: "800", fontSize: 14 },
+  deliveryButton: {
+    backgroundColor: colors.orange,
+    borderRadius: 16,
+    alignItems: "center",
+    paddingVertical: 16,
+    marginTop: 6,
+  },
 });

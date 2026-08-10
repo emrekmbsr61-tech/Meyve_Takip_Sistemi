@@ -9,7 +9,9 @@ import java.time.LocalDateTime;
 
 /*
   PriceHistory entity'si, bir meyve için müdürün alım sırasında girdiği
-  satış fiyatının (salesPrice) zaman içindeki geçmişini tutar.
+  alış fiyatının (unitPrice) zaman içindeki geçmişini tutar. Müdür sonraki
+  alımlarda bu geçmişe bakarak alış fiyatı belirleyebilir (bkz.
+  PriceHistoryService.getRecentPrices).
 */
 @Entity
 @Table(name = "price_history")

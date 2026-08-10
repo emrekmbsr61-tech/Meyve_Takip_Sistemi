@@ -33,4 +33,13 @@ public class Fruit {
     private Boolean isActive = true; // Meyve sistemde aktif olarak kullanılabiliyor mu?
 
     private Boolean isPerishable = false; // Hızlı bozulan ürün mü?
+
+    /*
+      Alım ekranında satış fiyatının otomatik hesaplanması için kullanılan
+      ürün bazlı kar yüzdesi (örn. 20 => %20). Varsayılan 20; mevcut
+      veritabanı kayıtlarında bu kolon NULL gelir (ddl-auto=update yeni
+      satırları geriye dönük doldurmaz), bu yüzden okuyan taraf (PurchaseService)
+      NULL durumunu bu varsayılanla aynı şekilde ele alır.
+    */
+    private Double profitMarginPercent = 20.0;
 }

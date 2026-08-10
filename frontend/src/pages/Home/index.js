@@ -108,6 +108,14 @@ const ALL_MENU_ITEMS = {
     iconColor: colors.primaryDark,
     iconBackground: colors.primaryLight,
   },
+  CompletedAcceptances: {
+    screen: "CompletedAcceptances",
+    title: "Tamamlanan İşlemler",
+    description: "Tamamlanmış mal kabul kayıtlarını görüntüle.",
+    icon: "checkmark-done-outline",
+    iconColor: colors.primary,
+    iconBackground: colors.primaryLight,
+  },
 };
 
 /*
@@ -133,7 +141,14 @@ const ROLE_MENU_KEYS = {
     "AdminUserApproval",
     "AdminAuditLog",
   ],
-  MAGAZA_PERSONELI: ["NeedListCreate", "NeedListList", "Acceptance", "ActiveTasks", "Fruits"],
+  MAGAZA_PERSONELI: [
+    "NeedListCreate",
+    "NeedListList",
+    "Acceptance",
+    "ActiveTasks",
+    "CompletedAcceptances",
+    "Fruits",
+  ],
   MAGAZA_MUDURU: ["NeedListList", "PurchaseManagement", "ActiveTasks", "Fruits"],
   SOFOR: ["ActiveTasks", "Fruits"],
 };
@@ -415,16 +430,16 @@ const styles = StyleSheet.create({
   },
 
   content: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 35,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 28,
   },
 
   profileCard: {
-    minHeight: 145,
+    minHeight: 112,
     backgroundColor: colors.primaryDark,
-    borderRadius: 25,
-    padding: 22,
+    borderRadius: 22,
+    padding: 17,
     flexDirection: "row",
     alignItems: "center",
     overflow: "hidden",
@@ -460,13 +475,13 @@ const styles = StyleSheet.create({
   },
 
   profileIconBox: {
-    width: 65,
-    height: 65,
-    borderRadius: 19,
+    width: 52,
+    height: 52,
+    borderRadius: 16,
     backgroundColor: "rgba(255,255,255,0.16)",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 17,
+    marginRight: 14,
   },
 
   profileTextArea: {
@@ -475,15 +490,15 @@ const styles = StyleSheet.create({
 
   welcomeText: {
     color: "#D8EAD9",
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "500",
   },
 
   userName: {
     color: colors.white,
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: "800",
-    marginTop: 3,
+    marginTop: 2,
   },
 
   roleBadge: {
@@ -517,13 +532,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 30,
-    marginBottom: 14,
+    marginTop: 20,
+    marginBottom: 10,
   },
 
   sectionTitle: {
     color: colors.text,
-    fontSize: 22,
+    fontSize: 19,
     fontWeight: "800",
   },
 
@@ -533,14 +548,14 @@ const styles = StyleSheet.create({
   },
 
   menuCard: {
-    minHeight: 108,
+    minHeight: 80,
     backgroundColor: colors.white,
-    borderRadius: 20,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingHorizontal: 17,
-    paddingVertical: 16,
-    marginBottom: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 10,
     flexDirection: "row",
     alignItems: "center",
 
@@ -560,12 +575,12 @@ const styles = StyleSheet.create({
   },
 
   menuIconBox: {
-    width: 58,
-    height: 58,
-    borderRadius: 17,
+    width: 46,
+    height: 46,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 15,
+    marginRight: 13,
   },
 
   menuTextArea: {
@@ -575,15 +590,15 @@ const styles = StyleSheet.create({
 
   menuTitle: {
     color: colors.text,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "800",
   },
 
   menuDescription: {
     color: colors.gray,
-    fontSize: 15,
-    lineHeight: 21,
-    marginTop: 4,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 2,
   },
 
   modalOverlay: {

@@ -90,8 +90,14 @@ public class PlanSummaryService {
         boolean allApproved = needs.stream().allMatch(need -> need.getStatus() == NeedListStatus.APPROVED);
 
         Map<Long, Double> purchasedByFruit = new LinkedHashMap<>();
+        // "Sonucu Gör" ekranında gösterilecek alış/satış fiyatı bilgisi de aynı Purchase
+        // kaydından, ek bir sorgu gerekmeden okunur.
+        Map<Long, java.math.BigDecimal> unitPriceByFruit = new LinkedHashMap<>();
+        Map<Long, java.math.BigDecimal> salesPriceByFruit = new LinkedHashMap<>();
         for (Purchase purchase : purchaseRepository.findByPlanId(planId)) {
             purchasedByFruit.put(purchase.getFruitId(), purchase.getPurchasedQuantity());
+            unitPriceByFruit.put(purchase.getFruitId(), purchase.getUnitPrice());
+            salesPriceByFruit.put(purchase.getFruitId(), purchase.getSalesPrice());
         }
 
         Map<Long, Double> collectedByFruit = new LinkedHashMap<>();
@@ -102,10 +108,14 @@ public class PlanSummaryService {
         // AcceptanceItem'da planId doğrudan tutulmuyor; önce bu plana ait Acceptance
         // kayıtları, ardından onların satırları (AcceptanceItem) bulunur.
         Map<Long, Double> acceptedByFruit = new LinkedHashMap<>();
+        Map<Long, Double> rejectedByFruit = new LinkedHashMap<>();
         for (Acceptance acceptance : acceptanceRepository.findByPlanId(planId)) {
             for (AcceptanceItem item : acceptanceItemRepository.findByAcceptanceId(acceptance.getId())) {
                 if (item.getAcceptedQuantity() != null) {
                     acceptedByFruit.merge(item.getFruitId(), item.getAcceptedQuantity(), Double::sum);
+                }
+                if (item.getRejectedQuantity() != null) {
+                    rejectedByFruit.merge(item.getFruitId(), item.getRejectedQuantity(), Double::sum);
                 }
             }
         }
@@ -119,7 +129,10 @@ public class PlanSummaryService {
                     entry.getValue(),
                     purchasedByFruit.get(entry.getKey()),
                     collectedByFruit.get(entry.getKey()),
-                    acceptedByFruit.get(entry.getKey())
+                    acceptedByFruit.get(entry.getKey()),
+                    rejectedByFruit.get(entry.getKey()),
+                    unitPriceByFruit.get(entry.getKey()),
+                    salesPriceByFruit.get(entry.getKey())
             );
 
             if (!item.isConsistent()) {
@@ -160,7 +173,10 @@ public class PlanSummaryService {
             Double required,
             Double purchased,
             Double collected,
-            Double accepted
+            Double accepted,
+            Double rejected,
+            java.math.BigDecimal unitPrice,
+            java.math.BigDecimal salesPrice
     ) {
         Fruit fruit = fruitRepository.findById(fruitId).orElse(null);
         FruitUnit unit = fruit == null ? null : fruit.getUnit();
@@ -213,6 +229,9 @@ public class PlanSummaryService {
                 purchased,
                 collected,
                 accepted,
+                rejected,
+                unitPrice,
+                salesPrice,
                 needPurchaseDiff,
                 purchaseCollectionDiff,
                 collectionAcceptanceDiff,

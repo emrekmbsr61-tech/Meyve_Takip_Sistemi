@@ -23,4 +23,10 @@ public class PurchasePlanItemResponse {
 
     // Bu ürün için daha önce alım kaydedilmiş mi?
     private boolean alreadyPurchased;
+
+    // Fruit.imagePath ile aynı değer; alım ekranında ürün görselini göstermek için kullanılır.
+    private String imagePath;
+
+    // Fruit.profitMarginPercent ile aynı değer; satış fiyatının otomatik hesaplanması için kullanılır.
+    private Double profitMarginPercent;
 }

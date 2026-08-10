@@ -30,6 +30,19 @@ public class CollectionController {
         }
     }
 
+    // Şoförün Teslimat Görevi ekranında göreceği, kendi topladığı ürün/miktar özetini döner.
+    @GetMapping("/plans/{planId}/delivery-summary")
+    public ResponseEntity<?> getDeliverySummary(
+            @PathVariable Long planId,
+            @RequestParam Long driverId
+    ) {
+        try {
+            return ResponseEntity.ok(collectionService.getDeliverySummary(driverId, planId));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        }
+    }
+
     // Bir planın tüm ürünleri için toplama kaydı oluşturur.
     @PostMapping("/plan")
     public ResponseEntity<?> createCollectionsForPlan(@RequestBody CollectionPlanRequest request) {

@@ -26,6 +26,14 @@ public interface UserRepository extends JpaRepository<User, Long> {
     List<User> findByRole(UserRole role);
 
     /*
+      Admin onay ekranında, yalnızca e-posta doğrulamasını TAMAMLAMIŞ PENDING
+      kullanıcıları göstermek için kullanılır. Henüz doğrulama kodunu girmemiş
+      bir kullanıcı, doğrulanana kadar bu listeye hiç düşmemelidir (bkz.
+      UserService.getPendingUsers).
+    */
+    List<User> findByRoleAndIsVerifiedTrue(UserRole role);
+
+    /*
       Belirli bir roldeki, id'si en küçük kullanıcıyı bulur.
       Purchase tamamlanınca TOPLAMA görevi atanacak SOFOR'u seçmek için kullanılır:
       birden fazla SOFOR varsa, görev ataması geçici olarak deterministik şekilde

@@ -2,8 +2,12 @@ package com.emre.meyvetakipsistemi.acceptance;
 
 import com.emre.meyvetakipsistemi.acceptance.dto.AcceptanceItemRequest;
 import com.emre.meyvetakipsistemi.acceptance.dto.AcceptanceRequest;
+import com.emre.meyvetakipsistemi.acceptance.dto.CompletedAcceptanceItemResponse;
 import com.emre.meyvetakipsistemi.auditlog.AuditActionType;
 import com.emre.meyvetakipsistemi.auditlog.AuditLogService;
+import com.emre.meyvetakipsistemi.deliveryplan.DeliveryPlanService;
+import com.emre.meyvetakipsistemi.fruit.Fruit;
+import com.emre.meyvetakipsistemi.fruit.FruitRepository;
 import com.emre.meyvetakipsistemi.needlist.NeedList;
 import com.emre.meyvetakipsistemi.needlist.NeedListRepository;
 import com.emre.meyvetakipsistemi.needlist.NeedListStatus;
@@ -30,6 +34,8 @@ public class AcceptanceService {
     private final UserRepository userRepository;
     private final TaskAssignmentRepository taskAssignmentRepository;
     private final AuditLogService auditLogService;
+    private final FruitRepository fruitRepository;
+    private final DeliveryPlanService deliveryPlanService;
 
     public AcceptanceService(
             AcceptanceRepository acceptanceRepository,
@@ -37,7 +43,9 @@ public class AcceptanceService {
             NeedListRepository needListRepository,
             UserRepository userRepository,
             TaskAssignmentRepository taskAssignmentRepository,
-            AuditLogService auditLogService
+            AuditLogService auditLogService,
+            FruitRepository fruitRepository,
+            DeliveryPlanService deliveryPlanService
     ) {
         this.acceptanceRepository = acceptanceRepository;
         this.itemRepository = itemRepository;
@@ -45,6 +53,8 @@ public class AcceptanceService {
         this.userRepository = userRepository;
         this.taskAssignmentRepository = taskAssignmentRepository;
         this.auditLogService = auditLogService;
+        this.fruitRepository = fruitRepository;
+        this.deliveryPlanService = deliveryPlanService;
     }
 
     /*
@@ -141,6 +151,60 @@ public class AcceptanceService {
         );
 
         return saved;
+    }
+
+    /*
+      "Tamamlanan İşlemler" ekranı için geçmiş mal kabul kayıtlarını döner.
+      MAGAZA_PERSONELI yalnızca kendi yaptığı kabulleri görür; ADMIN salt
+      okunur olarak herkesinkini görür. Yeni bir tablo kullanmaz — mevcut
+      Acceptance/AcceptanceItem kayıtları ürün bazında düzleştirilerek okunur.
+    */
+    public List<CompletedAcceptanceItemResponse> getCompletedAcceptances(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı"));
+
+        List<Acceptance> acceptances;
+
+        if (user.getRole() == UserRole.ADMIN) {
+            acceptances = acceptanceRepository.findAllByOrderByCreatedAtDesc();
+        } else if (user.getRole() == UserRole.MAGAZA_PERSONELI) {
+            acceptances = acceptanceRepository.findByReceivedByOrderByCreatedAtDesc(userId);
+        } else {
+            throw new RuntimeException("Bu işlem için yetkiniz yok");
+        }
+
+        List<CompletedAcceptanceItemResponse> result = new ArrayList<>();
+
+        for (Acceptance acceptance : acceptances) {
+            DeliveryPlanService.PlanStoreInfo storeInfo =
+                    deliveryPlanService.resolveStoreInfo(acceptance.getPlanId());
+
+            String receivedByName = userRepository.findById(acceptance.getReceivedBy())
+                    .map(User::getFullName)
+                    .orElse("Bilinmeyen kullanıcı");
+
+            List<AcceptanceItem> items = itemRepository.findByAcceptanceId(acceptance.getId());
+
+            for (AcceptanceItem item : items) {
+                Fruit fruit = fruitRepository.findById(item.getFruitId()).orElse(null);
+
+                result.add(new CompletedAcceptanceItemResponse(
+                        acceptance.getId(),
+                        acceptance.getPlanId(),
+                        storeInfo.storeName(),
+                        fruit == null ? "Bilinmeyen meyve" : fruit.getName(),
+                        fruit == null ? null : fruit.getUnit(),
+                        item.getAcceptedQuantity(),
+                        item.getRejectedQuantity(),
+                        item.getDamaged(),
+                        item.getRejectionReason(),
+                        acceptance.getCreatedAt(),
+                        receivedByName
+                ));
+            }
+        }
+
+        return result;
     }
 
     // Çağıranın var olan ve MAGAZA_PERSONELI rolünde bir kullanıcı olduğunu doğrular.

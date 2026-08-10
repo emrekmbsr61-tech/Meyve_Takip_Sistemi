@@ -124,7 +124,25 @@ export default function PlanSummaryModal({ visible, plan, summary, loading, erro
                           {formatQuantity(item.acceptedQuantity, item.unit)}
                         </Text>
                       </View>
+
+                      <View style={styles.stageBox}>
+                        <Text style={styles.stageLabel}>Red</Text>
+                        <Text style={[styles.stageValue, item.rejectedQuantity ? styles.stageValueWarning : null]}>
+                          {formatQuantity(item.rejectedQuantity, item.unit)}
+                        </Text>
+                      </View>
                     </View>
+
+                    {item.unitPrice != null || item.salesPrice != null ? (
+                      <View style={styles.priceRow}>
+                        {item.unitPrice != null ? (
+                          <Text style={styles.priceText}>Alış: {item.unitPrice} TL</Text>
+                        ) : null}
+                        {item.salesPrice != null ? (
+                          <Text style={styles.priceText}>Satış: {item.salesPrice} TL</Text>
+                        ) : null}
+                      </View>
+                    ) : null}
 
                     {(item.issues || []).length > 0 ? (
                       <View style={styles.issueBox}>
@@ -221,6 +239,9 @@ const styles = StyleSheet.create({
   },
   stageLabel: { color: colors.muted, fontSize: 11, fontWeight: "700" },
   stageValue: { color: colors.dark, fontWeight: "800", marginTop: 2, fontSize: 13 },
+  stageValueWarning: { color: colors.red },
+  priceRow: { flexDirection: "row", gap: 14, marginTop: 2, marginBottom: 8 },
+  priceText: { color: colors.muted, fontSize: 12, fontWeight: "600" },
   issueBox: { marginTop: 4 },
   issueText: { color: colors.orange, fontSize: 12, lineHeight: 18, marginBottom: 2 },
   okText: { color: colors.green, fontSize: 12, marginTop: 2 },

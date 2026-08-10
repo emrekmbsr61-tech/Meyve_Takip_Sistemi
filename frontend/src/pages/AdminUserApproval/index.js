@@ -58,6 +58,8 @@ export default function AdminUserApproval({ currentUser }) {
     }, [loadPendingUsers])
   );
 
+// rol atamasi user atayan role atanan kisinin rolu
+
   const handleAssignRole = async (user, role) => {
     try {
       setAssigningUserId(user.id);

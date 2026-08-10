@@ -120,6 +120,9 @@ export default function PurchaseManagement({ currentUser }) {
           purchasedQuantity: "",
           unitPrice: "",
           salesPrice: "",
+          // Satış fiyatı henüz elle değiştirilmedi; PurchaseItemRow alış fiyatına göre
+          // otomatik hesaplayabilir (bkz. PurchaseItemRow.handleUnitPriceChange).
+          salesPriceEdited: false,
           notes: "",
         };
       });
@@ -261,7 +264,7 @@ export default function PurchaseManagement({ currentUser }) {
         </View>
 
         <Text style={styles.subheading}>
-          {selectedStoreName}
+          {selectedStoreName} · {planItems.length} ürün birlikte kaydedilecek
           {isReadOnly ? " · Salt okunur" : ""}
         </Text>
 
@@ -351,7 +354,7 @@ export default function PurchaseManagement({ currentUser }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: 20, paddingBottom: 40 },
+  content: { padding: 16, paddingBottom: 32 },
   // Ekran dar olduğunda başlık ve tedarikçi butonu alt alta düşebilsin diye
   // flexWrap kullanılır; her ikisine de üstten boşluk (gap) bırakılır.
   headerRow: {
@@ -359,10 +362,10 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 10,
+    gap: 8,
   },
-  heading: { color: colors.dark, fontSize: 24, fontWeight: "800", flexShrink: 1 },
-  subheading: { color: colors.muted, marginTop: 4, marginBottom: 16 },
+  heading: { color: colors.dark, fontSize: 21, fontWeight: "800", flexShrink: 1 },
+  subheading: { color: colors.muted, marginTop: 3, marginBottom: 12, fontSize: 13 },
   supplierPickerButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -383,14 +386,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 12,
+    borderRadius: 16,
+    padding: 13,
+    marginBottom: 9,
     flexDirection: "row",
     alignItems: "center",
   },
-  planStore: { color: colors.dark, fontSize: 18, fontWeight: "800" },
-  planMeta: { color: colors.muted, marginTop: 3 },
+  planStore: { color: colors.dark, fontSize: 16, fontWeight: "800" },
+  planMeta: { color: colors.muted, marginTop: 2, fontSize: 12 },
   empty: {
     alignItems: "center",
     backgroundColor: colors.white,
@@ -409,8 +412,8 @@ const styles = StyleSheet.create({
   warningText: { color: colors.red, fontWeight: "700" },
   saveButton: {
     backgroundColor: colors.green,
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 14,
+    padding: 14,
     alignItems: "center",
     marginTop: 6,
   },

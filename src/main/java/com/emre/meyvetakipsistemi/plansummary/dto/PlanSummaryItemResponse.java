@@ -4,6 +4,7 @@ import com.emre.meyvetakipsistemi.fruit.FruitUnit;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /*
@@ -27,6 +28,13 @@ public class PlanSummaryItemResponse {
     private Double purchasedQuantity;
     private Double collectedQuantity;
     private Double acceptedQuantity;
+
+    // "Tamamlanan İşlemler" > Sonucu Gör ekranında kabul/red kırılımını göstermek için eklendi.
+    private Double rejectedQuantity;
+
+    // Aynı ekranda "gerekliyse alış/satış bilgileri" gösterebilmek için eklendi (Purchase'tan).
+    private BigDecimal unitPrice;
+    private BigDecimal salesPrice;
 
     private Double needPurchaseDifference;
     private Double purchaseCollectionDifference;

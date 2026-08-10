@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, TextInput, Button, ActivityIndicator } from "react-native";
+import { View, Text, TextInput, Button, ActivityIndicator, Pressable } from "react-native";
 import { verifyEmail, resendVerification } from "../../services/authService";
 
 const colors = {
@@ -7,7 +7,7 @@ const colors = {
   gray: "#6B7280",
 };
 
-export default function VerifyEmail({ email, onVerified }) {
+export default function VerifyEmail({ email, onVerified, onGoBack }) {
   const [code, setCode] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -103,6 +103,18 @@ export default function VerifyEmail({ email, onVerified }) {
           />
         )}
       </View>
+
+      {onGoBack ? (
+        <Pressable
+          onPress={onGoBack}
+          style={{ marginTop: 24 }}
+          disabled={loading || resending}
+        >
+          <Text style={{ color: colors.gray, textAlign: "center" }}>
+            ← Geri dön
+          </Text>
+        </Pressable>
+      ) : null}
 
       <Text style={{ marginTop: 20, color: "red" }}>{message}</Text>
     </View>

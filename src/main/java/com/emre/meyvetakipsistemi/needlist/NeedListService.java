@@ -9,11 +9,14 @@ import com.emre.meyvetakipsistemi.deliveryplan.DeliveryPlanService;
 import com.emre.meyvetakipsistemi.deliveryplan.PlanStatus;
 import com.emre.meyvetakipsistemi.fruit.Fruit;
 import com.emre.meyvetakipsistemi.fruit.FruitRepository;
+import com.emre.meyvetakipsistemi.needlist.dto.AddExtraItemsRequest;
 import com.emre.meyvetakipsistemi.needlist.dto.NeedListPlanItemRequest;
 import com.emre.meyvetakipsistemi.needlist.dto.NeedListPlanRequest;
 import com.emre.meyvetakipsistemi.needlist.dto.NeedListPlanResponse;
 import com.emre.meyvetakipsistemi.needlist.dto.NeedListRequest;
 import com.emre.meyvetakipsistemi.needlist.dto.NeedListResponse;
+import com.emre.meyvetakipsistemi.task.TaskAssignmentRepository;
+import com.emre.meyvetakipsistemi.task.TaskType;
 import com.emre.meyvetakipsistemi.user.User;
 import com.emre.meyvetakipsistemi.user.UserRepository;
 import com.emre.meyvetakipsistemi.user.UserRole;
@@ -36,6 +39,7 @@ public class NeedListService {
     private final DeliveryPlanRepository deliveryPlanRepository;
     private final DeliveryPlanService deliveryPlanService;
     private final AuditLogService auditLogService;
+    private final TaskAssignmentRepository taskAssignmentRepository;
 
     // Spring gerekli repository ve service nesnelerini buradan otomatik verir.
     public NeedListService(
@@ -44,7 +48,8 @@ public class NeedListService {
             UserRepository userRepository,
             DeliveryPlanRepository deliveryPlanRepository,
             DeliveryPlanService deliveryPlanService,
-            AuditLogService auditLogService
+            AuditLogService auditLogService,
+            TaskAssignmentRepository taskAssignmentRepository
     ) {
         this.needListRepository = needListRepository;
         this.fruitRepository = fruitRepository;
@@ -52,6 +57,7 @@ public class NeedListService {
         this.deliveryPlanRepository = deliveryPlanRepository;
         this.deliveryPlanService = deliveryPlanService;
         this.auditLogService = auditLogService;
+        this.taskAssignmentRepository = taskAssignmentRepository;
     }
 
     /*
@@ -338,6 +344,121 @@ public class NeedListService {
         return userRepository.findById(userId)
                 .map(User::getFullName)
                 .orElse("Bilinmeyen kullanıcı");
+    }
+
+    /*
+      Müdürün, var olan bir plana ekstra ürün eklemesini sağlar. YENİ bir
+      DeliveryPlan OLUŞTURMAZ — yalnızca aynı planId ile yeni NeedList satırları
+      ekler. Bu sayede ekstra ürünler, Purchase/Collection/Acceptance'ın zaten
+      kullandığı "needListRepository.findByPlanId(planId)" sorgusuyla otomatik
+      olarak normal ürünlerle birlikte görünür; Purchase/Collection/Acceptance
+      servislerinde hiçbir değişiklik gerekmez.
+
+      ÖNEMLİ: Yeni satırların createdBy'ı MÜDÜR değil, planın MEVCUT sahibidir.
+      Aksi halde TaskAssignmentService.resolvePlanOwner (Teslimat tamamlanınca
+      Kabul görevini kime atayacağını bulan metot) "plana ait ihtiyaç kayıtları
+      farklı kullanıcılara ait" hatası fırlatır, çünkü o metot tüm NeedList
+      kayıtlarının createdBy'ının aynı kişi olmasını şart koşar.
+    */
+    @Transactional
+    public List<NeedListResponse> addExtraItemsToPlan(Long planId, AddExtraItemsRequest request) {
+        User manager = requireManager(request.getManagerId());
+
+        List<NeedList> existingNeeds = needListRepository.findByPlanId(planId);
+
+        if (existingNeeds.isEmpty()) {
+            throw new RuntimeException("Bu plana ait ihtiyaç kaydı bulunamadı");
+        }
+
+        boolean planFinished = existingNeeds.stream()
+                .anyMatch(need -> need.getStatus() == NeedListStatus.APPROVED || need.getStatus() == NeedListStatus.CANCELLED);
+
+        if (planFinished) {
+            throw new RuntimeException("Bu plan tamamlanmış veya iptal edilmiş, ürün eklenemez");
+        }
+
+        boolean purchaseAlreadyCompleted = taskAssignmentRepository
+                .findByPlanIdAndTaskType(planId, TaskType.TOPLAMA)
+                .isPresent();
+
+        if (purchaseAlreadyCompleted) {
+            throw new RuntimeException("Bu planın alımı zaten tamamlandığı için ekstra ürün eklenemez");
+        }
+
+        if (request.getItems() == null || request.getItems().isEmpty()) {
+            throw new RuntimeException("En az bir ürün seçilmelidir");
+        }
+
+        // Planın orijinal sahibi korunur; ekstra ürünler de aynı kullanıcıya aitmiş gibi kaydedilir.
+        Long planOwnerId = existingNeeds.get(0).getCreatedBy();
+
+        Set<Long> existingFruitIds = existingNeeds.stream()
+                .map(NeedList::getFruitId)
+                .collect(java.util.stream.Collectors.toSet());
+        Set<Long> seenFruitIds = new HashSet<>();
+
+        for (NeedListPlanItemRequest item : request.getItems()) {
+            if (item.getFruitId() == null) {
+                throw new RuntimeException("Ürün seçilmelidir");
+            }
+            if (existingFruitIds.contains(item.getFruitId())) {
+                throw new RuntimeException("Bu ürün zaten bu planda mevcut");
+            }
+            if (!seenFruitIds.add(item.getFruitId())) {
+                throw new RuntimeException("Aynı ürün birden fazla kez gönderildi");
+            }
+            if (item.getRequiredQuantity() == null || item.getRequiredQuantity() <= 0) {
+                throw new RuntimeException("Geçerli bir miktar girilmelidir");
+            }
+            if (!fruitRepository.existsById(item.getFruitId())) {
+                throw new RuntimeException("Ürün bulunamadı: " + item.getFruitId());
+            }
+        }
+
+        List<NeedListResponse> result = new ArrayList<>();
+
+        for (NeedListPlanItemRequest item : request.getItems()) {
+            NeedList needList = new NeedList();
+            needList.setPlanId(planId);
+            needList.setFruitId(item.getFruitId());
+            needList.setRequiredQuantity(item.getRequiredQuantity());
+            needList.setCreatedBy(planOwnerId);
+            needList.setNotes(item.getNotes());
+            needList.setCreatedDate(LocalDateTime.now());
+            needList.setStatus(NeedListStatus.CREATED);
+
+            NeedList savedNeedList = needListRepository.save(needList);
+
+            auditLogService.createLog(
+                    manager.getId(),
+                    manager.getFullName(),
+                    AuditActionType.NEED_LIST_CREATED,
+                    "NeedList",
+                    savedNeedList.getId(),
+                    manager.getFullName() + " Plan #" + planId + " için ekstra ürün ekledi. Kayıt ID: " + savedNeedList.getId()
+            );
+
+            result.add(convertToResponse(savedNeedList));
+        }
+
+        return result;
+    }
+
+    // Çağıranın var olan ve MAGAZA_MUDURU rolünde bir kullanıcı olduğunu doğrular.
+    // Yalnızca mevcut bir plana ekstra ürün ekleme (addExtraItemsToPlan) için kullanılır.
+    private User requireManager(Long userId) {
+        if (userId == null) {
+            throw new RuntimeException("Kullanıcı kimliği gereklidir");
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı"));
+
+        if (user.getRole() != UserRole.MAGAZA_MUDURU) {
+            throw new RuntimeException("Bu işlem için mağaza müdürü yetkisi gereklidir");
+        }
+
+        return user;
     }
 
     // Çağıranın var olan ve MAGAZA_PERSONELI rolünde bir kullanıcı olduğunu doğrular.
