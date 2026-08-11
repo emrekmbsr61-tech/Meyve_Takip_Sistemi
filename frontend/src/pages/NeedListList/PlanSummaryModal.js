@@ -23,6 +23,19 @@ function formatQuantity(value, unit) {
 }
 
 /*
+  Beklenen (İhtiyaç) ile Teslim edilen (Toplama) farkını, Mal Kabul ekranında
+  eskiden gösterilen "fazla/eksik geldi" yorumunun taşındığı sade bir metne
+  çevirir. deliveryDifference null ise henüz toplama yapılmamıştır, hiçbir şey gösterilmez.
+*/
+function formatDeliveryDifference(value, unit) {
+  if (value === null || value === undefined) return null;
+  const unitLabel = getUnitLabel(unit);
+  if (value === 0) return `0 ${unitLabel} — Tam`;
+  if (value > 0) return `+${value} ${unitLabel} — Fazla teslimat`;
+  return `-${Math.abs(value)} ${unitLabel} — Eksik teslimat`;
+}
+
+/*
   NeedListList (Mevcut İhtiyaçlar) ekranındaki "Sonucu Gör" butonuna basınca
   açılan, bir planın İhtiyaç/Alım/Toplama/Kabul miktar karşılaştırmasını
   gösteren modal. SupplierPickerModal ile aynı sheet/backdrop deseni kullanılır.
@@ -144,6 +157,24 @@ export default function PlanSummaryModal({ visible, plan, summary, loading, erro
                       </View>
                     ) : null}
 
+                    {formatDeliveryDifference(item.deliveryDifference, item.unit) ? (
+                      <Text
+                        style={[
+                          styles.differenceText,
+                          item.deliveryDifference ? styles.differenceTextWarning : styles.differenceTextOk,
+                        ]}
+                      >
+                        Fark (Beklenen → Teslim Edilen): {formatDeliveryDifference(item.deliveryDifference, item.unit)}
+                      </Text>
+                    ) : null}
+
+                    {item.note ? (
+                      <View style={styles.noteBox}>
+                        <Text style={styles.noteLabel}>Not</Text>
+                        <Text style={styles.noteText}>{item.note}</Text>
+                      </View>
+                    ) : null}
+
                     {(item.issues || []).length > 0 ? (
                       <View style={styles.issueBox}>
                         {item.issues.map((issue, index) => (
@@ -242,6 +273,17 @@ const styles = StyleSheet.create({
   stageValueWarning: { color: colors.red },
   priceRow: { flexDirection: "row", gap: 14, marginTop: 2, marginBottom: 8 },
   priceText: { color: colors.muted, fontSize: 12, fontWeight: "600" },
+  differenceText: { fontSize: 12, fontWeight: "700", marginBottom: 8 },
+  differenceTextOk: { color: colors.green },
+  differenceTextWarning: { color: colors.orange },
+  noteBox: {
+    backgroundColor: colors.background,
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 8,
+  },
+  noteLabel: { color: colors.muted, fontSize: 11, fontWeight: "700" },
+  noteText: { color: colors.dark, fontSize: 13, marginTop: 3, lineHeight: 18 },
   issueBox: { marginTop: 4 },
   issueText: { color: colors.orange, fontSize: 12, lineHeight: 18, marginBottom: 2 },
   okText: { color: colors.green, fontSize: 12, marginTop: 2 },

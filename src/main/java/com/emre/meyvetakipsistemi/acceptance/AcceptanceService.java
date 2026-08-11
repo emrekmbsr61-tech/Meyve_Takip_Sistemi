@@ -1,10 +1,13 @@
 package com.emre.meyvetakipsistemi.acceptance;
 
+import com.emre.meyvetakipsistemi.acceptance.dto.AcceptanceChecklistItemResponse;
 import com.emre.meyvetakipsistemi.acceptance.dto.AcceptanceItemRequest;
 import com.emre.meyvetakipsistemi.acceptance.dto.AcceptanceRequest;
 import com.emre.meyvetakipsistemi.acceptance.dto.CompletedAcceptanceItemResponse;
 import com.emre.meyvetakipsistemi.auditlog.AuditActionType;
 import com.emre.meyvetakipsistemi.auditlog.AuditLogService;
+import com.emre.meyvetakipsistemi.collection.Collection;
+import com.emre.meyvetakipsistemi.collection.CollectionRepository;
 import com.emre.meyvetakipsistemi.deliveryplan.DeliveryPlanService;
 import com.emre.meyvetakipsistemi.fruit.Fruit;
 import com.emre.meyvetakipsistemi.fruit.FruitRepository;
@@ -22,8 +25,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -36,6 +41,7 @@ public class AcceptanceService {
     private final AuditLogService auditLogService;
     private final FruitRepository fruitRepository;
     private final DeliveryPlanService deliveryPlanService;
+    private final CollectionRepository collectionRepository;
 
     public AcceptanceService(
             AcceptanceRepository acceptanceRepository,
@@ -45,7 +51,8 @@ public class AcceptanceService {
             TaskAssignmentRepository taskAssignmentRepository,
             AuditLogService auditLogService,
             FruitRepository fruitRepository,
-            DeliveryPlanService deliveryPlanService
+            DeliveryPlanService deliveryPlanService,
+            CollectionRepository collectionRepository
     ) {
         this.acceptanceRepository = acceptanceRepository;
         this.itemRepository = itemRepository;
@@ -55,6 +62,24 @@ public class AcceptanceService {
         this.auditLogService = auditLogService;
         this.fruitRepository = fruitRepository;
         this.deliveryPlanService = deliveryPlanService;
+        this.collectionRepository = collectionRepository;
+    }
+
+    /*
+      Bir planın fruitId -> toplanan (Collection) miktarı eşlemesini üretir.
+
+      İş kuralı (kullanıcıyla netleştirildi): "beklenen miktar" mağazanın
+      İSTEDİĞİ miktardır (NeedList.requiredQuantity), şoförün getirdiği miktar
+      DEĞİL. Bu harita yalnızca BİLGİ/karşılaştırma amaçlı "teslim edilen"
+      değerini üretmek için kullanılır — doğrulamada sınır olarak kullanılmaz
+      (bkz. create() ve getAcceptanceChecklist()).
+    */
+    private Map<Long, Double> resolveCollectedByFruit(Long planId) {
+        Map<Long, Double> collectedByFruit = new HashMap<>();
+        for (Collection collection : collectionRepository.findByPlanId(planId)) {
+            collectedByFruit.put(collection.getFruitId(), collection.getCollectedQuantity());
+        }
+        return collectedByFruit;
     }
 
     /*
@@ -73,6 +98,34 @@ public class AcceptanceService {
 
         User receiver = requireStorePersonnel(request.getReceivedBy());
         TaskAssignment kabulTask = requireAssignedActiveKabulTask(request.getPlanId(), receiver);
+
+        /*
+          "Beklenen miktar" mağazanın İSTEDİĞİ miktardır (NeedList.requiredQuantity)
+          — doğrulama üst sınırı budur, aşağıdaki collectedByFruit DEĞİL.
+          collectedByFruit yalnızca Teslimat'ın gerçekten yapıldığını doğrulamak
+          için kullanılır (Kabul, Teslimat'tan önce yapılamaz); "teslim edilen"
+          bilgisinin kendisi zaten kalıcı olarak Collection tablosunda durur ve
+          "Sonucu Gör" (PlanSummary) ekranı bunu oradan okur — burada ayrıca
+          saklanmasına gerek yoktur.
+        */
+        Map<Long, Double> collectedByFruit = resolveCollectedByFruit(request.getPlanId());
+
+        // Planın henüz kabul edilmemiş tüm NeedList satırları: Purchase/Collection'daki
+        // "tüm ürünler birlikte gönderilmeli" kuralı burada da uygulanır, aksi halde
+        // bazı ürünler APPROVED olurken bazıları sonsuza kadar CREATED'ta kalabilir ve
+        // plan hiçbir zaman "Tamamlanan İşlemler"e taşınamaz.
+        List<NeedList> openNeeds = needListRepository.findByPlanId(request.getPlanId()).stream()
+                .filter(need -> need.getStatus() == NeedListStatus.CREATED)
+                .toList();
+
+        if (openNeeds.isEmpty()) {
+            throw new IllegalArgumentException("Bu plan için kabul edilecek açık ürün bulunamadı.");
+        }
+
+        Set<Long> openFruitIds = new HashSet<>();
+        for (NeedList need : openNeeds) {
+            openFruitIds.add(need.getFruitId());
+        }
 
         // 1. Aşama: hiçbir kayıt yazılmadan önce bütün kalemler doğrulanır.
         Set<Long> submittedFruitIds = new HashSet<>();
@@ -94,14 +147,24 @@ public class AcceptanceService {
                 throw new IllegalArgumentException("Bu ürün için mal kabul zaten kaydedilmiş.");
             }
 
+            if (!collectedByFruit.containsKey(need.getFruitId())) {
+                throw new IllegalArgumentException(
+                        "Bu ürün için toplama kaydı bulunamadığından mal kabul yapılamaz.");
+            }
+
             double accepted = requestItem.getAcceptedQuantity() == null ? 0 : requestItem.getAcceptedQuantity();
             double rejected = requestItem.getRejectedQuantity() == null ? 0 : requestItem.getRejectedQuantity();
 
             if (accepted < 0 || rejected < 0 || accepted + rejected > need.getRequiredQuantity()) {
-                throw new IllegalArgumentException("Kabul ve red miktarları beklenen miktarı geçemez.");
+                throw new IllegalArgumentException("Kabul ve red miktarları beklenen (ihtiyaç) miktarını geçemez.");
             }
 
             validatedNeeds.add(need);
+        }
+
+        // Planın açık tüm ürünleri tek seferde gönderilmelidir; kısmi gönderim kabul edilmez.
+        if (!submittedFruitIds.equals(openFruitIds)) {
+            throw new IllegalArgumentException("Planın kabul bekleyen tüm ürünleri birlikte gönderilmelidir.");
         }
 
         // 2. Aşama: doğrulama tamamlandığına göre kayıtlar güvenle oluşturulabilir.
@@ -151,6 +214,42 @@ public class AcceptanceService {
         );
 
         return saved;
+    }
+
+    /*
+      Kabul ekranının, kaydetmeden ÖNCE göstereceği "beklenen miktar" listesini
+      döner. AcceptanceService.create()'deki doğrulamayla AYNI kaynağı
+      (NeedList.requiredQuantity) kullanır — böylece ekranda görünen "beklenen"
+      değeri ile backend'in kabul edeceği üst sınır her zaman birebir aynıdır.
+      Teslim edilen (Collection.collectedQuantity) ayrıca, yalnızca bilgi
+      amaçlı ("fazla/eksik geldi" karşılaştırması için) taşınır.
+    */
+    public List<AcceptanceChecklistItemResponse> getAcceptanceChecklist(Long userId, Long planId) {
+        User receiver = requireStorePersonnel(userId);
+        requireAssignedActiveKabulTask(planId, receiver);
+
+        Map<Long, Double> collectedByFruit = resolveCollectedByFruit(planId);
+
+        List<NeedList> openNeeds = needListRepository.findByPlanId(planId).stream()
+                .filter(need -> need.getStatus() == NeedListStatus.CREATED)
+                .toList();
+
+        List<AcceptanceChecklistItemResponse> result = new ArrayList<>();
+
+        for (NeedList need : openNeeds) {
+            Fruit fruit = fruitRepository.findById(need.getFruitId()).orElse(null);
+
+            result.add(new AcceptanceChecklistItemResponse(
+                    need.getId(),
+                    need.getFruitId(),
+                    fruit == null ? "Bilinmeyen meyve" : fruit.getName(),
+                    fruit == null ? null : fruit.getUnit(),
+                    need.getRequiredQuantity(),
+                    collectedByFruit.get(need.getFruitId())
+            ));
+        }
+
+        return result;
     }
 
     /*

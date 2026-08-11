@@ -41,6 +41,18 @@ public class PlanSummaryItemResponse {
     private Double collectionAcceptanceDifference;
     private Double needAcceptanceDifference;
 
+    /*
+      Beklenen (İhtiyaç) ile Teslim edilen (Toplama) arasındaki fark
+      (collectedQuantity - requiredQuantity). Pozitif = fazla teslimat,
+      negatif = eksik teslimat, null = henüz toplama yapılmamış. Mal Kabul
+      ekranında eskiden "fazla/eksik geldi" olarak gösterilen yorum, artık
+      sadece burada (Sonucu Gör ekranında) gösterilir.
+    */
+    private Double deliveryDifference;
+
+    // Mal Kabul sırasında girilen not (AcceptanceItem.rejectionReason); yoksa null.
+    private String note;
+
     // Bu ürün için tespit edilen miktar farkları / eksik aşama bilgileri (Türkçe, insan tarafından okunabilir).
     private List<String> issues;
 

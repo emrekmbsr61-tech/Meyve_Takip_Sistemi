@@ -109,6 +109,8 @@ public class PlanSummaryService {
         // kayıtları, ardından onların satırları (AcceptanceItem) bulunur.
         Map<Long, Double> acceptedByFruit = new LinkedHashMap<>();
         Map<Long, Double> rejectedByFruit = new LinkedHashMap<>();
+        // planId + fruitId eşsiz olduğu için (uk_acceptance_items_plan_fruit) her meyvenin en fazla bir notu olur.
+        Map<Long, String> noteByFruit = new LinkedHashMap<>();
         for (Acceptance acceptance : acceptanceRepository.findByPlanId(planId)) {
             for (AcceptanceItem item : acceptanceItemRepository.findByAcceptanceId(acceptance.getId())) {
                 if (item.getAcceptedQuantity() != null) {
@@ -116,6 +118,9 @@ public class PlanSummaryService {
                 }
                 if (item.getRejectedQuantity() != null) {
                     rejectedByFruit.merge(item.getFruitId(), item.getRejectedQuantity(), Double::sum);
+                }
+                if (item.getRejectionReason() != null && !item.getRejectionReason().isBlank()) {
+                    noteByFruit.put(item.getFruitId(), item.getRejectionReason());
                 }
             }
         }
@@ -132,7 +137,8 @@ public class PlanSummaryService {
                     acceptedByFruit.get(entry.getKey()),
                     rejectedByFruit.get(entry.getKey()),
                     unitPriceByFruit.get(entry.getKey()),
-                    salesPriceByFruit.get(entry.getKey())
+                    salesPriceByFruit.get(entry.getKey()),
+                    noteByFruit.get(entry.getKey())
             );
 
             if (!item.isConsistent()) {
@@ -176,7 +182,8 @@ public class PlanSummaryService {
             Double accepted,
             Double rejected,
             java.math.BigDecimal unitPrice,
-            java.math.BigDecimal salesPrice
+            java.math.BigDecimal salesPrice,
+            String note
     ) {
         Fruit fruit = fruitRepository.findById(fruitId).orElse(null);
         FruitUnit unit = fruit == null ? null : fruit.getUnit();
@@ -185,6 +192,7 @@ public class PlanSummaryService {
         Double purchaseCollectionDiff = (purchased != null && collected != null) ? round(collected - purchased) : null;
         Double collectionAcceptanceDiff = (collected != null && accepted != null) ? round(accepted - collected) : null;
         Double needAcceptanceDiff = accepted != null ? round(accepted - required) : null;
+        Double deliveryDiff = collected != null ? round(collected - required) : null;
 
         List<String> issues = new ArrayList<>();
 
@@ -236,6 +244,8 @@ public class PlanSummaryService {
                 purchaseCollectionDiff,
                 collectionAcceptanceDiff,
                 needAcceptanceDiff,
+                deliveryDiff,
+                note,
                 issues,
                 consistent
         );

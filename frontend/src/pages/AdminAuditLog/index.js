@@ -130,6 +130,9 @@ export default function AdminAuditLog() {
   // Aynı anda yalnızca bir kategori açık kalır; null ise hiçbiri açık değildir.
   const [expandedCategory, setExpandedCategory] = useState(null);
 
+  // Aynı anda yalnızca bir kaydın "Detayları Gör" alanı açık kalır.
+  const [expandedLogId, setExpandedLogId] = useState(null);
+
   const loadLogs = useCallback(async () => {
     try {
       setLoading(true);
@@ -191,6 +194,12 @@ export default function AdminAuditLog() {
 
   function toggleCategory(key) {
     setExpandedCategory((current) => (current === key ? null : key));
+    // Kategori değişince önceki kaydın açık detay alanı kafa karıştırmasın diye kapatılır.
+    setExpandedLogId(null);
+  }
+
+  function toggleLogDetail(id) {
+    setExpandedLogId((current) => (current === id ? null : id));
   }
 
   return (
@@ -259,31 +268,68 @@ export default function AdminAuditLog() {
                     {category.logs.length === 0 ? (
                       <Text style={styles.categoryEmptyText}>Bu kategoride kayıt yok.</Text>
                     ) : (
-                      category.logs.map((log) => (
-                        <View key={log.id} style={styles.card}>
-                          {/*
+                      category.logs.map((log) => {
+                        const isDetailOpen = expandedLogId === log.id;
+
+                        return (
+                          /*
+                            3 seviyeli, basit tıklama akışı: Kategori (seviye 1) ->
+                            kayıt satırı (seviye 2) -> "Detayları Gör" (seviye 3).
                             Kullanıcıya ham backend description'ı (teknik ID'ler,
                             "Kayıt ID: X" gibi ekler içerebiliyordu) yerine, zaten
                             var olan userFullName + actionType alanlarından
                             üretilen sade bir cümle gösterilir. Örnek:
                             "Emre Kumbasar — Alım kaydı oluşturuldu"
-                          */}
-                          <Text style={styles.logLine}>
-                            <Text style={styles.logUser}>{log.userFullName || "Sistem"}</Text>
-                            <Text style={styles.logAction}> — {getActionTypeLabel(log.actionType)}</Text>
-                          </Text>
+                          */
+                          <Pressable
+                            key={log.id}
+                            style={styles.card}
+                            onPress={() => toggleLogDetail(log.id)}
+                          >
+                            <Text style={styles.logLine}>
+                              <Text style={styles.logUser}>{log.userFullName || "Sistem"}</Text>
+                              <Text style={styles.logAction}> — {getActionTypeLabel(log.actionType)}</Text>
+                            </Text>
 
-                          <View style={styles.metaRow}>
-                            {log.entityId != null ? (
-                              <Text style={styles.metaText}>
-                                {log.entityType ? `${getEntityTypeLabel(log.entityType)} ` : ""}#{log.entityId}
-                              </Text>
+                            <View style={styles.metaRow}>
+                              <Text style={styles.metaText}>{formatDate(log.createdAt)}</Text>
+                              <View style={styles.detailToggle}>
+                                <Text style={styles.detailToggleText}>Detayları Gör</Text>
+                                <Ionicons
+                                  name={isDetailOpen ? "chevron-up" : "chevron-down"}
+                                  size={14}
+                                  color={colors.green}
+                                />
+                              </View>
+                            </View>
+
+                            {isDetailOpen ? (
+                              <View style={styles.detailBox}>
+                                <View style={styles.detailRow}>
+                                  <Text style={styles.detailLabel}>Kim yaptı</Text>
+                                  <Text style={styles.detailValue}>{log.userFullName || "Sistem"}</Text>
+                                </View>
+                                <View style={styles.detailRow}>
+                                  <Text style={styles.detailLabel}>Ne zaman</Text>
+                                  <Text style={styles.detailValue}>{formatDate(log.createdAt)}</Text>
+                                </View>
+                                <View style={styles.detailRow}>
+                                  <Text style={styles.detailLabel}>Sonuç</Text>
+                                  <Text style={styles.detailValue}>{getActionTypeLabel(log.actionType)}</Text>
+                                </View>
+                                {log.entityId != null ? (
+                                  <View style={styles.detailRow}>
+                                    <Text style={styles.detailLabel}>İlgili kayıt</Text>
+                                    <Text style={styles.detailValue}>
+                                      {log.entityType ? `${getEntityTypeLabel(log.entityType)} ` : ""}#{log.entityId}
+                                    </Text>
+                                  </View>
+                                ) : null}
+                              </View>
                             ) : null}
-
-                            <Text style={styles.metaText}>{formatDate(log.createdAt)}</Text>
-                          </View>
-                        </View>
-                      ))
+                          </Pressable>
+                        );
+                      })
                     )}
                   </View>
                 ) : null}
@@ -354,10 +400,23 @@ const styles = StyleSheet.create({
   logAction: { color: colors.muted, fontWeight: "600" },
   metaRow: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
     marginTop: 10,
   },
   metaText: { color: colors.muted, fontSize: 12, fontWeight: "600" },
+  detailToggle: { flexDirection: "row", alignItems: "center", gap: 3 },
+  detailToggleText: { color: colors.green, fontSize: 12, fontWeight: "700" },
+  detailBox: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    gap: 6,
+  },
+  detailRow: { flexDirection: "row", justifyContent: "space-between" },
+  detailLabel: { color: colors.muted, fontSize: 12, fontWeight: "600" },
+  detailValue: { color: colors.dark, fontSize: 12, fontWeight: "700" },
   empty: {
     alignItems: "center",
     backgroundColor: colors.white,

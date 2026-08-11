@@ -34,4 +34,14 @@ public class AcceptanceController {
          return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
      }
  }
+
+ // Kabul ekranının kaydetmeden önce göstereceği "beklenen miktar" (toplanan miktar) listesini döner.
+ @GetMapping("/checklist/{planId}")
+ public ResponseEntity<?> getAcceptanceChecklist(@PathVariable Long planId, @RequestParam Long userId) {
+     try {
+         return ResponseEntity.ok(acceptanceService.getAcceptanceChecklist(userId, planId));
+     } catch (RuntimeException e) {
+         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+     }
+ }
 }

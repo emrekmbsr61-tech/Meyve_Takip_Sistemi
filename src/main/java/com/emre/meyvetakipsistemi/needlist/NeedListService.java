@@ -15,7 +15,9 @@ import com.emre.meyvetakipsistemi.needlist.dto.NeedListPlanRequest;
 import com.emre.meyvetakipsistemi.needlist.dto.NeedListPlanResponse;
 import com.emre.meyvetakipsistemi.needlist.dto.NeedListRequest;
 import com.emre.meyvetakipsistemi.needlist.dto.NeedListResponse;
+import com.emre.meyvetakipsistemi.task.TaskAssignment;
 import com.emre.meyvetakipsistemi.task.TaskAssignmentRepository;
+import com.emre.meyvetakipsistemi.task.TaskStatus;
 import com.emre.meyvetakipsistemi.task.TaskType;
 import com.emre.meyvetakipsistemi.user.User;
 import com.emre.meyvetakipsistemi.user.UserRepository;
@@ -32,6 +34,12 @@ import java.util.Set;
 // İhtiyaç listesi işlemlerinin iş mantığını yönetir.
 @Service
 public class NeedListService {
+
+    /*
+      ALIM görevi için süre standardı. PurchaseService/CollectionService'teki
+      TASK_DEADLINE_HOURS ile aynı geçici varsayımdır.
+    */
+    private static final int TASK_DEADLINE_HOURS = 4;
 
     private final NeedListRepository needListRepository;
     private final FruitRepository fruitRepository;
@@ -151,6 +159,8 @@ public class NeedListService {
                 savedPlan.getId(),
                 creator.getFullName() + " " + request.getStoreId() + " mağazası için yeni plan oluşturdu. Plan #" + savedPlan.getId()
         );
+
+        assignAlimTask(savedPlan.getId());
 
         // 2) Her ürün için, backend'in ürettiği planId ile NeedList satırı oluşturulur.
         List<NeedListResponse> items = new ArrayList<>();
@@ -442,6 +452,43 @@ public class NeedListService {
         }
 
         return result;
+    }
+
+    /*
+      Yeni oluşturulan plan için, sistemdeki id'si en küçük MAGAZA_MUDURU'ya bir
+      ALIM görevi atar — PurchaseService.completeAlimTaskAndAssignToplama ile
+      AYNI desen (findFirstByRoleOrderByIdAsc). Bu görev daha sonra müdür alımı
+      tamamladığında PurchaseService tarafından zaten COMPLETED yapılıyordu
+      (taskAssignmentRepository.findByPlanIdAndTaskType(planId, TaskType.ALIM)
+      .ifPresent(...)) ama şimdiye kadar hiçbir yerde OLUŞTURULMUYORDU — bu
+      yüzden "Aktif Görevler" ekranında hiç görünmüyordu.
+
+      Sistemde henüz hiç MAGAZA_MUDURU yoksa görev sessizce atlanır: ihtiyaç
+      oluşturma işlemi bundan etkilenmemeli, müdür sisteme sonradan
+      eklendiğinde alım yine de PurchaseManagement ekranından (NeedList
+      farkına bakan getPendingPurchasePlans üzerinden) yapılabilir.
+    */
+    private void assignAlimTask(Long planId) {
+        userRepository.findFirstByRoleOrderByIdAsc(UserRole.MAGAZA_MUDURU).ifPresent(manager -> {
+            TaskAssignment alimTask = new TaskAssignment();
+            alimTask.setPlanId(planId);
+            alimTask.setAssignedUserId(manager.getId());
+            alimTask.setAssignedAt(LocalDateTime.now());
+            alimTask.setDueDate(LocalDateTime.now().plusHours(TASK_DEADLINE_HOURS));
+            alimTask.setTaskType(TaskType.ALIM);
+            alimTask.setStatus(TaskStatus.PENDING);
+
+            TaskAssignment savedTask = taskAssignmentRepository.save(alimTask);
+
+            auditLogService.createLog(
+                    manager.getId(),
+                    manager.getFullName(),
+                    AuditActionType.TASK_ASSIGNED,
+                    "TaskAssignment",
+                    savedTask.getId(),
+                    "Plan #" + planId + " için " + manager.getFullName() + " kullanıcısına alım görevi atandı."
+            );
+        });
     }
 
     // Çağıranın var olan ve MAGAZA_MUDURU rolünde bir kullanıcı olduğunu doğrular.

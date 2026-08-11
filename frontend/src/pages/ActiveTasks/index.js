@@ -14,6 +14,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { getNeedLists } from "../../services/needListService";
 import { getTasks } from "../../services/taskService";
 import SoforTaskList from "./SoforTaskList";
+import MudurTaskList from "./MudurTaskList";
 
 const colors = {
   green: "#2E7D32",
@@ -51,15 +52,26 @@ function formatDate(dateValue) {
 }
 
 /*
-  SOFOR hiç NeedList oluşturmadığı için aşağıdaki Mal Kabul akışı SOFOR
-  için her zaman boş listeye düşer. Bu yüzden SOFOR, TaskAssignment
-  tabanlı ayrı bir görev listesine (SoforTaskList) yönlendirilir.
-  Rol kontrolü burada, hook'lardan önce yapılır; iki bileşen de kendi
-  hook'larını kendi içinde çağırır, bu yüzden React hook kuralını bozmaz.
+  Üç rol, üç farklı görev kaynağı kullanır — hiçbiri diğerinin NeedList/görev
+  verisiyle karışmaz:
+    - SOFOR: hiç NeedList oluşturmaz, yalnızca kendisine atanan TaskAssignment
+      (TOPLAMA/TESLIMAT) kayıtlarını görür (bkz. SoforTaskList).
+    - MAGAZA_MUDURU: hiç NeedList oluşturmaz, yalnızca kendisine atanan ALIM
+      görevlerini görür (bkz. MudurTaskList, NeedListService.assignAlimTask).
+      Önceden müdür de aşağıdaki MalKabulActiveTasks'a düşüyordu ve oradaki
+      "item.createdBy === currentUser.id" filtresi müdür için hiçbir zaman
+      eşleşmediğinden ekranı her zaman boş görünüyordu — bu artık düzeltildi.
+    - MAGAZA_PERSONELI / ADMIN: aşağıdaki MalKabulActiveTasks (Mal Kabul akışı).
+  Rol kontrolü burada, hook'lardan önce yapılır; her bileşen kendi hook'unu
+  kendi içinde çağırır, bu yüzden React hook kuralını bozmaz.
 */
 export default function ActiveTasks(props) {
   if (props.currentUser.role === "SOFOR") {
     return <SoforTaskList currentUser={props.currentUser} navigation={props.navigation} />;
+  }
+
+  if (props.currentUser.role === "MAGAZA_MUDURU") {
+    return <MudurTaskList currentUser={props.currentUser} navigation={props.navigation} />;
   }
 
   return <MalKabulActiveTasks {...props} />;
