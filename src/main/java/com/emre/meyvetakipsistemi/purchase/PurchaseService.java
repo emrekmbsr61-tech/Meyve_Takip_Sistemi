@@ -8,6 +8,7 @@ import com.emre.meyvetakipsistemi.fruit.FruitRepository;
 import com.emre.meyvetakipsistemi.fruit.FruitUnit;
 import com.emre.meyvetakipsistemi.needlist.NeedList;
 import com.emre.meyvetakipsistemi.needlist.NeedListRepository;
+import com.emre.meyvetakipsistemi.notification.NotificationService;
 import com.emre.meyvetakipsistemi.pricehistory.PriceHistoryService;
 import com.emre.meyvetakipsistemi.purchase.dto.*;
 import com.emre.meyvetakipsistemi.supplier.SupplierService;
@@ -47,6 +48,7 @@ public class PurchaseService {
     private final PriceHistoryService priceHistoryService;
     private final TaskAssignmentRepository taskAssignmentRepository;
     private final AuditLogService auditLogService;
+    private final NotificationService notificationService;
 
     public PurchaseService(
             PurchaseRepository purchaseRepository,
@@ -57,7 +59,8 @@ public class PurchaseService {
             SupplierService supplierService,
             PriceHistoryService priceHistoryService,
             TaskAssignmentRepository taskAssignmentRepository,
-            AuditLogService auditLogService
+            AuditLogService auditLogService,
+            NotificationService notificationService
     ) {
         this.purchaseRepository = purchaseRepository;
         this.needListRepository = needListRepository;
@@ -68,6 +71,7 @@ public class PurchaseService {
         this.priceHistoryService = priceHistoryService;
         this.taskAssignmentRepository = taskAssignmentRepository;
         this.auditLogService = auditLogService;
+        this.notificationService = notificationService;
     }
 
     // Alımı henüz tamamlanmamış (en az bir ürünü hâlâ alınmamış) planları listeler.
@@ -388,6 +392,12 @@ public class PurchaseService {
                 "TaskAssignment",
                 savedTask.getId(),
                 "Plan #" + planId + " için " + sofor.getFullName() + " kullanıcısına toplama görevi atandı."
+        );
+
+        notificationService.notifyUser(
+                sofor.getId(),
+                "TOPLAMA_GOREVI_ATANDI",
+                "Yeni toplama görevi atandı (Plan #" + planId + ")."
         );
     }
 

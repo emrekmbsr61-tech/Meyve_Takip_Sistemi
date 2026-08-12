@@ -1,123 +1,47 @@
-// Backend ana adresidir.
-import { API_BASE_URL } from "../config/api";
+import { apiRequest } from "./httpClient";
+import { saveSession } from "./tokenStorage";
 
-// Login isteğini backend'e gönderir.
+/*
+  Login isteğini backend'e gönderir. Başarılıysa dönen token + kullanıcı
+  bilgisini cihaza kaydeder (App.js açılışta bunu geri yükler) ve token'ı
+  ÇIKARARAK sade kullanıcı nesnesini döner - token uygulama state'inde/
+  ekranlar arası prop olarak dolaşmaz, sadece SecureStore'da kalır.
+*/
 export async function login(username, password) {
-  const response = await fetch(`${API_BASE_URL}/auth/login`, {
+  const data = await apiRequest("/auth/login", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-
-    // Backend'deki LoginRequest sınıfına gidecek veri.
-    body: JSON.stringify({
-      username: username,
-      password: password,
-    }),
+    body: JSON.stringify({ username, password }),
   });
 
-  // Backend bazen hata mesajını düz text olarak dönebilir.
-  const responseText = await response.text();
+  const { token, ...user } = data;
 
-  let data;
-
-  try {
-    data = responseText ? JSON.parse(responseText) : null;
-  } catch {
-    data = responseText;
+  if (token) {
+    await saveSession(user, token);
   }
 
-  // Login başarısızsa hata yollar.
-  if (!response.ok) {
-    throw new Error(data || "Login başarısız");
-  }
-
-  // Login başarılıysa LoginResponse döner.
-  return data;
-
-}
-
-// Backend'in düz text veya JSON dönebilen cevabını ortak şekilde okur.
-async function parseResponse(response) {
-  const responseText = await response.text();
-
-  let data;
-
-  try {
-    data = responseText ? JSON.parse(responseText) : null;
-  } catch {
-    data = responseText;
-  }
-
-  return data;
+  return user;
 }
 
 // Kayıt isteğini backend'e gönderir. Backend'deki RegisterRequest ile birebir eşleşir.
 export async function register({ fullName, username, email, password, passwordRepeat }) {
-  const response = await fetch(`${API_BASE_URL}/auth/register`, {
+  return await apiRequest("/auth/register", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      fullName,
-      username,
-      email,
-      password,
-      passwordRepeat,
-    }),
+    body: JSON.stringify({ fullName, username, email, password, passwordRepeat }),
   });
-
-  const data = await parseResponse(response);
-
-  if (!response.ok) {
-    throw new Error(typeof data === "string" ? data : "Kayıt başarısız");
-  }
-
-  // Kayıt başarılıysa RegisterResponse döner.
-  return data;
 }
 
 // E-posta doğrulama kodunu backend'e gönderir.
 export async function verifyEmail(email, code) {
-  const response = await fetch(`${API_BASE_URL}/auth/verify-email`, {
+  return await apiRequest("/auth/verify-email", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      email,
-      code,
-    }),
+    body: JSON.stringify({ email, code }),
   });
-
-  const data = await parseResponse(response);
-
-  if (!response.ok) {
-    throw new Error(typeof data === "string" ? data : "Doğrulama başarısız");
-  }
-
-  // Başarılıysa backend sade bir Türkçe metin döner.
-  return data;
 }
 
 // Doğrulama kodunun tekrar gönderilmesini backend'den ister.
 export async function resendVerification(email) {
-  const response = await fetch(`${API_BASE_URL}/auth/resend-verification`, {
+  return await apiRequest("/auth/resend-verification", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      email,
-    }),
+    body: JSON.stringify({ email }),
   });
-
-  const data = await parseResponse(response);
-
-  if (!response.ok) {
-    throw new Error(typeof data === "string" ? data : "Kod tekrar gönderilemedi");
-  }
-
-  return data;
 }

@@ -20,4 +20,8 @@ public class LoginResponse {
 
     // Kullanıcının sistemdeki rol bilgisidir.
     private String role;
+
+    // Giriş sonrası üretilen JWT token'dır. Frontend, sonraki tüm isteklerde
+    // bunu "Authorization: Bearer <token>" header'ı olarak göndermelidir.
+    private String token;
 }

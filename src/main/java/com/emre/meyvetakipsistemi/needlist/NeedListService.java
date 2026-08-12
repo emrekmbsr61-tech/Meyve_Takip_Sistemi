@@ -15,6 +15,7 @@ import com.emre.meyvetakipsistemi.needlist.dto.NeedListPlanRequest;
 import com.emre.meyvetakipsistemi.needlist.dto.NeedListPlanResponse;
 import com.emre.meyvetakipsistemi.needlist.dto.NeedListRequest;
 import com.emre.meyvetakipsistemi.needlist.dto.NeedListResponse;
+import com.emre.meyvetakipsistemi.notification.NotificationService;
 import com.emre.meyvetakipsistemi.task.TaskAssignment;
 import com.emre.meyvetakipsistemi.task.TaskAssignmentRepository;
 import com.emre.meyvetakipsistemi.task.TaskStatus;
@@ -48,6 +49,7 @@ public class NeedListService {
     private final DeliveryPlanService deliveryPlanService;
     private final AuditLogService auditLogService;
     private final TaskAssignmentRepository taskAssignmentRepository;
+    private final NotificationService notificationService;
 
     // Spring gerekli repository ve service nesnelerini buradan otomatik verir.
     public NeedListService(
@@ -57,7 +59,8 @@ public class NeedListService {
             DeliveryPlanRepository deliveryPlanRepository,
             DeliveryPlanService deliveryPlanService,
             AuditLogService auditLogService,
-            TaskAssignmentRepository taskAssignmentRepository
+            TaskAssignmentRepository taskAssignmentRepository,
+            NotificationService notificationService
     ) {
         this.needListRepository = needListRepository;
         this.fruitRepository = fruitRepository;
@@ -66,6 +69,7 @@ public class NeedListService {
         this.deliveryPlanService = deliveryPlanService;
         this.auditLogService = auditLogService;
         this.taskAssignmentRepository = taskAssignmentRepository;
+        this.notificationService = notificationService;
     }
 
     /*
@@ -487,6 +491,12 @@ public class NeedListService {
                     "TaskAssignment",
                     savedTask.getId(),
                     "Plan #" + planId + " için " + manager.getFullName() + " kullanıcısına alım görevi atandı."
+            );
+
+            notificationService.notifyUser(
+                    manager.getId(),
+                    "ALIM_GOREVI_ATANDI",
+                    "Yeni ihtiyaç oluşturuldu, alım bekleniyor (Plan #" + planId + ")."
             );
         });
     }

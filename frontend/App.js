@@ -1,7 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 // Taslak Mal Kabul ve Aktif Görev ekranlarında kullanıyoruz.
 import { View, Text,TextInput,Pressable, ScrollView,ActivityIndicator,Modal,Image } from "react-native";
+
+// Uygulama açılışında kayıtlı oturumu (token + kullanıcı) geri yüklemek için.
+import { loadSession, clearSession, getToken } from "./src/services/tokenStorage";
+
+// Gerçek zamanlı bildirimler için merkezi WebSocket bağlantısı.
+import { connect as connectWebSocket, disconnect as disconnectWebSocket } from "./src/services/websocketService";
 
 // Telefonun üstündeki saat, Wi-Fi ve şarj alanını düzenler.
 import { StatusBar } from "expo-status-bar";
@@ -233,6 +239,24 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
 
   /*
+    Uygulama açılışında cihazda kayıtlı bir oturum (token + kullanıcı) var mı
+    diye kontrol ederiz. Kontrol bitene kadar Login ekranını GÖSTERMEYİZ,
+    yoksa kullanıcı zaten girişliyken bir an için Login ekranı yanıp söner.
+  */
+  const [checkingSession, setCheckingSession] = useState(true);
+
+  useEffect(() => {
+    loadSession()
+      .then((session) => {
+        if (session) {
+          setCurrentUser(session.user);
+          connectWebSocket(session.token, session.user.id);
+        }
+      })
+      .finally(() => setCheckingSession(false));
+  }, []);
+
+  /*
     Giriş yapmadan önceki ekranlar arasındaki geçişi (Login/Register/VerifyEmail)
     currentUser'a benzer şekilde basit bir state ile yönetiyoruz.
     authScreen: "login" | "register" | "verify"
@@ -241,6 +265,15 @@ export default function App() {
 
   // Register ekranında girilen e-posta, VerifyEmail ekranına buradan aktarılır.
   const [pendingEmail, setPendingEmail] = useState("");
+
+  // Kayıtlı oturum kontrolü sürerken boş bir yükleniyor ekranı gösteririz.
+  if (checkingSession) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
 
   /*
     currentUser boşsa kullanıcı giriş yapmamıştır.
@@ -278,7 +311,14 @@ export default function App() {
     return (
       <>
         <Login
-          onLoginSuccess={setCurrentUser}
+          onLoginSuccess={async (user) => {
+            setCurrentUser(user);
+
+            const token = await getToken();
+            if (token) {
+              connectWebSocket(token, user.id);
+            }
+          }}
           onGoToRegister={() => setAuthScreen("register")}
         />
         <StatusBar style="dark" />
@@ -327,7 +367,11 @@ export default function App() {
             <Home
               {...props}
               currentUser={currentUser}
-              onLogout={() => setCurrentUser(null)}
+              onLogout={async () => {
+                disconnectWebSocket();
+                await clearSession();
+                setCurrentUser(null);
+              }}
             />
           )}
         </Stack.Screen>

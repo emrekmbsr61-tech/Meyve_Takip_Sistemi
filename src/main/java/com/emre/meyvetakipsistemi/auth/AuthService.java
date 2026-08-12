@@ -34,6 +34,7 @@ public class AuthService {
     private final EmailVerificationCodeRepository emailVerificationCodeRepository;
     private final EmailService emailService;
     private final PasswordEncoder passwordEncoder;
+    private final JwtService jwtService;
 
     // Doğrulama kodunun kaç dakika geçerli olacağını belirler.
     private static final int VERIFICATION_CODE_VALID_MINUTES = 10;
@@ -43,12 +44,14 @@ public class AuthService {
             UserRepository userRepository,
             AuditLogService auditLogService,
             EmailVerificationCodeRepository emailVerificationCodeRepository,
-            EmailService emailService
+            EmailService emailService,
+            JwtService jwtService
     ) {
         this.userRepository = userRepository;
         this.auditLogService = auditLogService;
         this.emailVerificationCodeRepository = emailVerificationCodeRepository;
         this.emailService = emailService;
+        this.jwtService = jwtService;
 
         // Şifreleri güvenli şekilde kontrol etmek ve şifrelemek için kullanılır.
         this.passwordEncoder = new BCryptPasswordEncoder();
@@ -179,13 +182,16 @@ public class AuthService {
                 user.getFullName() + " sisteme giriş yaptı."
         );
 
+        String token = jwtService.generateToken(user.getId(), user.getRole().name());
+
         // Kullanıcı bilgilerini frontend'e gönderir.
         // Şifre veya şifre hash'i gönderilmez.
         return new LoginResponse(
                 user.getId(),
                 user.getUsername(),
                 user.getFullName(),
-                user.getRole().name()
+                user.getRole().name(),
+                token
         );
     }
 

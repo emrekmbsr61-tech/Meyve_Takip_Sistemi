@@ -14,6 +14,7 @@ import com.emre.meyvetakipsistemi.fruit.FruitRepository;
 import com.emre.meyvetakipsistemi.needlist.NeedList;
 import com.emre.meyvetakipsistemi.needlist.NeedListRepository;
 import com.emre.meyvetakipsistemi.needlist.NeedListStatus;
+import com.emre.meyvetakipsistemi.notification.NotificationService;
 import com.emre.meyvetakipsistemi.task.TaskAssignment;
 import com.emre.meyvetakipsistemi.task.TaskAssignmentRepository;
 import com.emre.meyvetakipsistemi.task.TaskStatus;
@@ -42,6 +43,7 @@ public class AcceptanceService {
     private final FruitRepository fruitRepository;
     private final DeliveryPlanService deliveryPlanService;
     private final CollectionRepository collectionRepository;
+    private final NotificationService notificationService;
 
     public AcceptanceService(
             AcceptanceRepository acceptanceRepository,
@@ -52,7 +54,8 @@ public class AcceptanceService {
             AuditLogService auditLogService,
             FruitRepository fruitRepository,
             DeliveryPlanService deliveryPlanService,
-            CollectionRepository collectionRepository
+            CollectionRepository collectionRepository,
+            NotificationService notificationService
     ) {
         this.acceptanceRepository = acceptanceRepository;
         this.itemRepository = itemRepository;
@@ -63,6 +66,7 @@ public class AcceptanceService {
         this.fruitRepository = fruitRepository;
         this.deliveryPlanService = deliveryPlanService;
         this.collectionRepository = collectionRepository;
+        this.notificationService = notificationService;
     }
 
     /*
@@ -211,6 +215,12 @@ public class AcceptanceService {
                 request.getPlanId(),
                 receiver.getFullName() + " Plan #" + request.getPlanId() + " için "
                         + request.getItems().size() + " ürünlük mal kabul kaydetti."
+        );
+
+        notificationService.notifyUser(
+                receiver.getId(),
+                "KABUL_TAMAMLANDI",
+                "Mal kabul tamamlandı (Plan #" + request.getPlanId() + ")."
         );
 
         return saved;

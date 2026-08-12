@@ -4,6 +4,7 @@ import com.emre.meyvetakipsistemi.auditlog.AuditActionType;
 import com.emre.meyvetakipsistemi.auditlog.AuditLogService;
 import com.emre.meyvetakipsistemi.needlist.NeedList;
 import com.emre.meyvetakipsistemi.needlist.NeedListRepository;
+import com.emre.meyvetakipsistemi.notification.NotificationService;
 import com.emre.meyvetakipsistemi.user.User;
 import com.emre.meyvetakipsistemi.user.UserRepository;
 import com.emre.meyvetakipsistemi.user.UserRole;
@@ -39,17 +40,20 @@ public class TaskAssignmentService {
     private final NeedListRepository needListRepository;
     private final UserRepository userRepository;
     private final AuditLogService auditLogService;
+    private final NotificationService notificationService;
 
     public TaskAssignmentService(
             TaskAssignmentRepository taskRepository,
             NeedListRepository needListRepository,
             UserRepository userRepository,
-            AuditLogService auditLogService
+            AuditLogService auditLogService,
+            NotificationService notificationService
     ) {
         this.taskRepository = taskRepository;
         this.needListRepository = needListRepository;
         this.userRepository = userRepository;
         this.auditLogService = auditLogService;
+        this.notificationService = notificationService;
     }
 
     // Bu metodun görevi: Kullanıcıya atanmış mevcut görevleri okumak. Yeni görev oluşturmaz.
@@ -136,6 +140,12 @@ public class TaskAssignmentService {
                 "TaskAssignment",
                 savedTask.getId(),
                 "Plan #" + planId + " için " + planOwner.getFullName() + " kullanıcısına kabul görevi atandı."
+        );
+
+        notificationService.notifyUser(
+                planOwner.getId(),
+                "KABUL_GOREVI_ATANDI",
+                "Teslimat tamamlandı, mal kabul bekleniyor (Plan #" + planId + ")."
         );
     }
 

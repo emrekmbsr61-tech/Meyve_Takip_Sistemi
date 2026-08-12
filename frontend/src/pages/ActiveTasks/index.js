@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -13,6 +13,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { getNeedLists } from "../../services/needListService";
 import { getTasks } from "../../services/taskService";
+import { addNotificationListener } from "../../services/websocketService";
 import SoforTaskList from "./SoforTaskList";
 import MudurTaskList from "./MudurTaskList";
 
@@ -175,6 +176,21 @@ function MalKabulActiveTasks({
       loadTasks();
     }, [loadTasks])
   );
+
+  /*
+    Gerçek zamanlı güncelleme: backend'de yeni bir KABUL görevi atandığında
+    (TaskAssignmentService.assignKabulIfNeeded -> NotificationService),
+    ekran açıkken bile elle yenilemeye gerek kalmadan liste güncellenir.
+  */
+  useEffect(() => {
+    const unsubscribe = addNotificationListener((notification) => {
+      if (notification.type === "KABUL_GOREVI_ATANDI") {
+        loadTasks();
+      }
+    });
+
+    return unsubscribe;
+  }, [loadTasks]);
 
   // Göreve basılınca doğrudan o planın Mal Kabul ekranı açılır.
   const openTask = (task) => {
