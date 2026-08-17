@@ -139,6 +139,11 @@ export default function PurchaseItemRow({ item, values, onChange, readOnly }) {
         </View>
       </View>
 
+      {/* Mağaza personelinin bu ürün için yazdığı not (varsa). */}
+      {item.staffNote ? (
+        <Text style={styles.staffNoteText}>Personel notu: {item.staffNote}</Text>
+      ) : null}
+
       {recentPrices.length > 0 ? (
         <Text style={styles.recentPricesText}>
           Son alımlar: {recentPrices.map((p) => `${p.price} TL (${formatShortDate(p.date)})`).join(" · ")}
@@ -237,6 +242,12 @@ const styles = StyleSheet.create({
   fruitName: { color: colors.dark, fontSize: 16, fontWeight: "800" },
   needInfo: { color: colors.muted, marginTop: 2, fontSize: 12 },
   recentPricesText: { color: colors.muted, fontSize: 11, marginBottom: 6 },
+  staffNoteText: {
+    color: colors.green,
+    fontSize: 12,
+    fontWeight: "700",
+    marginBottom: 6,
+  },
   label: { color: colors.dark, fontWeight: "700", marginTop: 8, marginBottom: 5, fontSize: 12 },
   input: {
     borderWidth: 1,

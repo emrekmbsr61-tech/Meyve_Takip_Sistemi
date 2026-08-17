@@ -28,9 +28,12 @@ export default function NeedListList({ currentUser }) {
   const [needLists, setNeedLists] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-  const [editingItem, setEditingItem] = useState(null);
-  const [editQuantity, setEditQuantity] = useState("");
-  const [editNotes, setEditNotes] = useState("");
+  // Düzenleme artık tek bir ürün değil, o an açık olan PLANIN tüm ürünleri
+  // için birlikte çalışır: editingPlanId hangi planın düzenlemede olduğunu,
+  // editValues ise { [itemId]: { quantity, notes } } şeklinde her ürünün
+  // güncel taslak değerlerini tutar. "Kaydet" tek seferde hepsini gönderir.
+  const [editingPlanId, setEditingPlanId] = useState(null);
+  const [editValues, setEditValues] = useState({});
   const [currentPage, setCurrentPage] = useState(1);
 
   // Yalnızca MAGAZA_PERSONELI düzenleyip silebilir; ADMIN ve MAGAZA_MUDURU salt okunur görür.
@@ -57,7 +60,9 @@ export default function NeedListList({ currentUser }) {
     const grouped = Object.values(visibleNeedLists.reduce((all, item) => {
       // planId eksikse kayıtları yanlışlıkla tek grupta birleştirmemek için her birine kendi anahtarı verilir.
       const groupKey = item.planId !== null && item.planId !== undefined ? item.planId : `missing-${item.id}`;
-      if (!all[groupKey]) all[groupKey] = { planId: item.planId, storeId: item.storeId, storeName: item.storeName, createdDate: item.createdDate, createdByName: item.createdByName, status: item.status, notes: item.notes, items: [] };
+      // notes: planın GENEL notu (DeliveryPlan.generalNotes) — ürünlerin kendi
+      // notlarından farklıdır ve aynı plandaki her satırda aynı değeri taşır.
+      if (!all[groupKey]) all[groupKey] = { planId: item.planId, storeId: item.storeId, storeName: item.storeName, createdDate: item.createdDate, createdByName: item.createdByName, status: item.status, notes: item.planNotes, items: [] };
       all[groupKey].items.push(item);
       return all;
     }, {}));
@@ -70,15 +75,53 @@ export default function NeedListList({ currentUser }) {
   const totalPages = Math.max(1, Math.ceil(plans.length / ITEMS_PER_PAGE));
   const visiblePlans = plans.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const startEdit = (item) => { if (!canManage) return; setEditingItem(item); setEditQuantity(String(item.requiredQuantity)); setEditNotes(item.notes || ""); };
-  const saveEdit = async () => {
-    if (!editQuantity || Number(editQuantity) <= 0) { setMessage("Geçerli bir miktar girilmelidir."); return; }
-    try { await updateNeedList(editingItem.id, { planId: editingItem.planId, fruitId: editingItem.fruitId, requiredQuantity: Number(editQuantity), createdBy: editingItem.createdBy || currentUser.id, notes: editNotes }); setEditingItem(null); setEditQuantity(""); setEditNotes(""); setMessage("Ürün ihtiyacı güncellendi."); loadNeedLists(); } catch (error) { setMessage(error.message); }
+  // Planın tüm ürünlerini aynı anda düzenleme moduna açar; her ürün kendi
+  // mevcut miktar/not değeriyle başlar.
+  const startEdit = (plan) => {
+    if (!canManage) return;
+    const values = {};
+    plan.items.forEach((item) => { values[item.id] = { quantity: String(item.requiredQuantity), notes: item.notes || "" }; });
+    setEditingPlanId(plan.planId);
+    setEditValues(values);
+  };
+  const cancelEdit = () => { setEditingPlanId(null); setEditValues({}); };
+  const setEditValue = (itemId, field, value) => setEditValues((current) => ({ ...current, [itemId]: { ...current[itemId], [field]: value } }));
+
+  // Düzenlemedeki planın ürünlerini tek "Kaydet" ile gönderir, ama yalnızca
+  // GERÇEKTEN değeri değişmiş olanlar için backend'e istek atar. Dokunulmamış
+  // ürünler için istek atmazsak backend'de yeni bir "güncelleme" logu
+  // oluşmaz, dolayısıyla o ürünün "Son güncelleyen" bilgisi değişmez.
+  const saveEdit = async (plan) => {
+    const invalidItem = plan.items.find((item) => {
+      const quantity = Number(editValues[item.id]?.quantity);
+      return !editValues[item.id]?.quantity || Number.isNaN(quantity) || quantity <= 0;
+    });
+    if (invalidItem) { setMessage(`${invalidItem.fruitName} için geçerli bir miktar girilmelidir.`); return; }
+
+    const changedItems = plan.items.filter((item) => {
+      const values = editValues[item.id];
+      return Number(values.quantity) !== item.requiredQuantity || values.notes !== (item.notes || "");
+    });
+
+    if (changedItems.length === 0) { cancelEdit(); return; }
+
+    try {
+      await Promise.all(changedItems.map((item) => updateNeedList(item.id, {
+        planId: item.planId,
+        fruitId: item.fruitId,
+        requiredQuantity: Number(editValues[item.id].quantity),
+        createdBy: item.createdBy || currentUser.id,
+        notes: editValues[item.id].notes,
+      })));
+      cancelEdit();
+      setMessage(changedItems.length === 1 ? "Ürün ihtiyacı güncellendi." : "Ürün ihtiyaçları güncellendi.");
+      loadNeedLists();
+    } catch (error) { setMessage(error.message); }
   };
 
   // Plan silme artık tek bir istekle yapılır: backend aynı transaction içinde
   // yalnızca bu planId'ye ait NeedList kayıtlarını siler ve DeliveryPlan'ı iptal eder.
-  const deletePlan = (plan) => Alert.alert("İhtiyaç planı silinsin mi?", "Bu plandaki tüm ürün kayıtları silinir.", [{ text: "Vazgeç", style: "cancel" }, { text: "Sil", style: "destructive", onPress: async () => { try { await cancelNeedListPlan(plan.planId, currentUser.id); setEditingItem(null); setMessage("İhtiyaç planı silindi."); loadNeedLists(); } catch (error) { setMessage(error.message); } } }]);
+  const deletePlan = (plan) => Alert.alert("İhtiyaç planı silinsin mi?", "Bu plandaki tüm ürün kayıtları silinir.", [{ text: "Vazgeç", style: "cancel" }, { text: "Sil", style: "destructive", onPress: async () => { try { await cancelNeedListPlan(plan.planId, currentUser.id); cancelEdit(); setMessage("İhtiyaç planı silindi."); loadNeedLists(); } catch (error) { setMessage(error.message); } } }]);
 
   const closeExtraModal = () => { setExtraModalPlan(null); setExtraError(""); };
 
@@ -110,9 +153,9 @@ export default function NeedListList({ currentUser }) {
       <View style={styles.personRow}><Ionicons name="person-outline" size={16} color={colors.muted}/><Text style={styles.personText}>{plan.createdByName}</Text><Ionicons name="cube-outline" size={16} color={colors.muted}/><Text style={styles.personText}>{plan.items.length} ürün</Text></View>
 
       <View style={styles.divider}/>
-      {plan.items.map((item) => <View key={item.id}>{editingItem?.id === item.id ? <View style={styles.editBox}><Text style={styles.editTitle}>{item.fruitName}</Text><TextInput value={editQuantity} onChangeText={(value) => setEditQuantity(cleanQuantity(value))} keyboardType="decimal-pad" style={styles.input}/><TextInput value={editNotes} onChangeText={setEditNotes} placeholder="Not" style={styles.input}/><View style={styles.buttonRow}><Pressable style={styles.saveSmall} onPress={saveEdit}><Text style={styles.smallText}>Kaydet</Text></Pressable><Pressable style={styles.cancelSmall} onPress={() => setEditingItem(null)}><Text style={styles.smallText}>İptal</Text></Pressable></View></View> : <Pressable onPress={() => startEdit(item)} style={styles.itemRow} disabled={!canManage}><View style={styles.dot}/><Text style={styles.itemName}>{item.fruitName}</Text><Text style={styles.itemQuantity}>{item.requiredQuantity} <Text style={styles.itemUnit}>{getUnitLabel(item.fruitUnit)}</Text></Text></Pressable>}{item.updatedByName ? <Text style={styles.updatedText}>Son güncelleyen: {item.updatedByName} · {formatDate(item.updatedDate)}</Text> : null}</View>)}
+      {plan.items.map((item) => <View key={item.id}>{editingPlanId === plan.planId ? <View style={styles.editBox}><Text style={styles.editTitle}>{item.fruitName}</Text><TextInput value={editValues[item.id]?.quantity ?? ""} onChangeText={(value) => setEditValue(item.id, "quantity", cleanQuantity(value))} keyboardType="decimal-pad" style={styles.input}/><TextInput value={editValues[item.id]?.notes ?? ""} onChangeText={(value) => setEditValue(item.id, "notes", value)} placeholder="Not" style={styles.input}/></View> : <View style={styles.itemRow}><View style={styles.dot}/><Text style={styles.itemName}>{item.fruitName}</Text><Text style={styles.itemQuantity}>{item.requiredQuantity} <Text style={styles.itemUnit}>{getUnitLabel(item.fruitUnit)}</Text></Text></View>}{item.updatedByName ? <Text style={styles.updatedText}>Son güncelleyen: {item.updatedByName} · {formatDate(item.updatedDate)}</Text> : null}</View>)}
       {plan.notes ? <View style={styles.note}><Ionicons name="document-text-outline" size={18} color={colors.muted}/><Text style={styles.noteText}>{plan.notes}</Text></View> : null}
-      {canManage ? <View style={styles.buttonRow}><Pressable style={styles.editButton} onPress={() => startEdit(plan.items[0])}><Ionicons name="pencil-outline" size={19} color={colors.green}/><Text style={styles.editText}>Düzenle</Text></Pressable><Pressable style={styles.deleteButton} onPress={() => deletePlan(plan)}><Ionicons name="trash-outline" size={19} color={colors.red}/><Text style={styles.deleteText}>Sil</Text></Pressable></View> : null}
+      {canManage ? (editingPlanId === plan.planId ? <View style={styles.buttonRow}><Pressable style={styles.saveSmall} onPress={() => saveEdit(plan)}><Text style={styles.smallText}>Kaydet</Text></Pressable><Pressable style={styles.cancelSmall} onPress={cancelEdit}><Text style={styles.smallText}>İptal</Text></Pressable></View> : <View style={styles.buttonRow}><Pressable style={styles.editButton} onPress={() => startEdit(plan)}><Ionicons name="pencil-outline" size={19} color={colors.green}/><Text style={styles.editText}>Düzenle</Text></Pressable><Pressable style={styles.deleteButton} onPress={() => deletePlan(plan)}><Ionicons name="trash-outline" size={19} color={colors.red}/><Text style={styles.deleteText}>Sil</Text></Pressable></View>) : null}
       {isManager ? <Pressable style={styles.extraButton} onPress={() => setExtraModalPlan(plan)}><Ionicons name="add-circle-outline" size={19} color={colors.green}/><Text style={styles.extraButtonText}>Ekstra Ürün Ekle</Text></Pressable> : null}
     </View>;
     })}

@@ -120,12 +120,55 @@ function formatDate(value) {
   )}:${pad(date.getMinutes())}`;
 }
 
+// Önem derecesi filtresi seçenekleri (backend AuditStatus değerleriyle aynı).
+const STATUS_FILTERS = [
+  { key: "ALL", label: "Tümü" },
+  { key: "CRITICAL", label: "Kritik" },
+  { key: "ERROR", label: "Hata" },
+  { key: "WARNING", label: "Uyarı" },
+  { key: "SUCCESS", label: "Normal" },
+];
+
+// Tarih aralığı filtresi seçenekleri.
+const DATE_FILTERS = [
+  { key: "ALL", label: "Tüm zamanlar" },
+  { key: "TODAY", label: "Bugün" },
+  { key: "WEEK", label: "Son 7 gün" },
+];
+
+// Seçilen tarih filtresine göre "bu tarihten sonrası" sınırını üretir.
+function getDateLimit(dateFilter) {
+  if (dateFilter === "TODAY") {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    return start;
+  }
+
+  if (dateFilter === "WEEK") {
+    const start = new Date();
+    start.setDate(start.getDate() - 6);
+    start.setHours(0, 0, 0, 0);
+    return start;
+  }
+
+  return null;
+}
+
 export default function AdminAuditLog() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [searchText, setSearchText] = useState("");
   const [entityIdText, setEntityIdText] = useState("");
+
+  /*
+    Şartnamede istenen detaylı filtreler.
+    statusFilter: log'un önem derecesi (backend AuditStatus alanı).
+    dateFilter: kayıt tarihine göre hızlı aralık seçimi.
+    Her ikisi de "ALL" iken hiçbir kısıtlama uygulanmaz.
+  */
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [dateFilter, setDateFilter] = useState("ALL");
 
   // Aynı anda yalnızca bir kategori açık kalır; null ise hiçbiri açık değildir.
   const [expandedCategory, setExpandedCategory] = useState(null);
@@ -161,13 +204,31 @@ export default function AdminAuditLog() {
 
   const filteredLogs = useMemo(() => {
     const search = searchText.trim().toLowerCase();
-    const entityIdSearch = entityIdText.trim();
+    const idSearch = entityIdText.trim();
+    const dateLimit = getDateLimit(dateFilter);
 
     return logs.filter((log) => {
-      if (entityIdSearch && String(log.entityId ?? "") !== entityIdSearch) {
+      // Plan numarası veya kayıt id'si ile arama (ikisinden biri tutarsa yeter).
+      if (idSearch) {
+        const matchesPlan = String(log.planId ?? "") === idSearch;
+        const matchesEntity = String(log.entityId ?? "") === idSearch;
+
+        if (!matchesPlan && !matchesEntity) {
+          return false;
+        }
+      }
+
+      // Önem derecesi filtresi.
+      if (statusFilter !== "ALL" && log.status !== statusFilter) {
         return false;
       }
 
+      // Tarih aralığı filtresi.
+      if (dateLimit && new Date(log.createdAt) < dateLimit) {
+        return false;
+      }
+
+      // Kullanıcı adı veya açıklama içinde serbest metin araması.
       if (search) {
         const haystack = `${log.userFullName || ""} ${log.description || ""}`.toLowerCase();
         if (!haystack.includes(search)) {
@@ -177,7 +238,7 @@ export default function AdminAuditLog() {
 
       return true;
     });
-  }, [logs, searchText, entityIdText]);
+  }, [logs, searchText, entityIdText, statusFilter, dateFilter]);
 
   /*
     filteredLogs zaten en yeniden en eskiye sıralı olduğu için (bkz. loadLogs),
@@ -220,12 +281,62 @@ export default function AdminAuditLog() {
 
       <TextInput
         style={styles.input}
-        placeholder="Plan / kayıt id ile ara..."
+        placeholder="Plan no veya kayıt id ile ara..."
         placeholderTextColor={colors.muted}
         value={entityIdText}
         onChangeText={setEntityIdText}
         keyboardType="numeric"
       />
+
+      {/* Önem derecesi filtresi */}
+      <Text style={styles.filterLabel}>Durum</Text>
+      <View style={styles.filterRow}>
+        {STATUS_FILTERS.map((filter) => (
+          <Pressable
+            key={filter.key}
+            onPress={() => setStatusFilter(filter.key)}
+            style={[
+              styles.filterChip,
+              statusFilter === filter.key && styles.filterChipActive,
+            ]}
+          >
+            <Text
+              style={[
+                styles.filterChipText,
+                statusFilter === filter.key && styles.filterChipTextActive,
+              ]}
+            >
+              {filter.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {/* Tarih aralığı filtresi */}
+      <Text style={styles.filterLabel}>Tarih</Text>
+      <View style={styles.filterRow}>
+        {DATE_FILTERS.map((filter) => (
+          <Pressable
+            key={filter.key}
+            onPress={() => setDateFilter(filter.key)}
+            style={[
+              styles.filterChip,
+              dateFilter === filter.key && styles.filterChipActive,
+            ]}
+          >
+            <Text
+              style={[
+                styles.filterChipText,
+                dateFilter === filter.key && styles.filterChipTextActive,
+              ]}
+            >
+              {filter.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <Text style={styles.resultCount}>{filteredLogs.length} kayıt listeleniyor</Text>
 
       {loading ? <ActivityIndicator color={colors.green} style={{ marginTop: 10 }} /> : null}
 
@@ -357,6 +468,29 @@ const styles = StyleSheet.create({
     color: colors.dark,
   },
   errorText: { color: "#C62828", fontWeight: "600", marginTop: 10 },
+
+  // Filtre alanı
+  filterLabel: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 4,
+    marginBottom: 6,
+  },
+  filterRow: { flexDirection: "row", flexWrap: "wrap", gap: 7, marginBottom: 10 },
+  filterChip: {
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  filterChipActive: { backgroundColor: colors.green, borderColor: colors.green },
+  filterChipText: { color: colors.muted, fontSize: 12, fontWeight: "700" },
+  filterChipTextActive: { color: colors.white },
+  resultCount: { color: colors.muted, fontSize: 12, marginBottom: 6 },
+
   categoryCard: {
     backgroundColor: colors.white,
     borderWidth: 1,

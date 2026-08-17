@@ -2,6 +2,8 @@ package com.emre.meyvetakipsistemi.task;
 
 import com.emre.meyvetakipsistemi.auditlog.AuditActionType;
 import com.emre.meyvetakipsistemi.auditlog.AuditLogService;
+import com.emre.meyvetakipsistemi.auth.CurrentUserService;
+import com.emre.meyvetakipsistemi.exception.ResourceNotFoundException;
 import com.emre.meyvetakipsistemi.needlist.NeedList;
 import com.emre.meyvetakipsistemi.needlist.NeedListRepository;
 import com.emre.meyvetakipsistemi.notification.NotificationService;
@@ -32,28 +34,30 @@ import java.util.stream.Collectors;
 @Service
 public class TaskAssignmentService {
 
-    // KABUL görevi için süre standardı. PurchaseService/CollectionService'teki
-    // TASK_DEADLINE_HOURS ile aynı geçici varsayımdır.
-    private static final int TASK_DEADLINE_HOURS = 4;
-
     private final TaskAssignmentRepository taskRepository;
     private final NeedListRepository needListRepository;
     private final UserRepository userRepository;
     private final AuditLogService auditLogService;
     private final NotificationService notificationService;
+    private final CurrentUserService currentUserService;
+    private final TaskDeadlineCalculator taskDeadlineCalculator;
 
     public TaskAssignmentService(
             TaskAssignmentRepository taskRepository,
             NeedListRepository needListRepository,
             UserRepository userRepository,
             AuditLogService auditLogService,
-            NotificationService notificationService
+            NotificationService notificationService,
+            CurrentUserService currentUserService,
+            TaskDeadlineCalculator taskDeadlineCalculator
     ) {
         this.taskRepository = taskRepository;
         this.needListRepository = needListRepository;
         this.userRepository = userRepository;
         this.auditLogService = auditLogService;
         this.notificationService = notificationService;
+        this.currentUserService = currentUserService;
+        this.taskDeadlineCalculator = taskDeadlineCalculator;
     }
 
     // Bu metodun görevi: Kullanıcıya atanmış mevcut görevleri okumak. Yeni görev oluşturmaz.
@@ -61,11 +65,22 @@ public class TaskAssignmentService {
         return taskRepository.findByAssignedUserIdOrderByDueDateAsc(userId);
     }
 
-    // Bu metodun görevi: Bir görevi "devam ediyor" durumuna çekmek (şu an frontend'de kullanılmıyor,
-    // dokunulmadı).
+    /*
+      Bu metodun görevi: Bir görevi "devam ediyor" durumuna çekmek.
+
+      Sahiplik kuralı: Görev yalnızca KENDİSİNE atanan kişi (veya ADMIN)
+      tarafından başlatılabilir. Kimlik doğrulanmış token'dan okunur; böylece
+      kardeş metot completeDelivery ile aynı güvenlik seviyesine gelir.
+    */
     public TaskAssignment start(Long id) {
         TaskAssignment task = taskRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Görev bulunamadı."));
+                .orElseThrow(() -> new ResourceNotFoundException("Görev bulunamadı."));
+
+        currentUserService.requireOwnerOrAdmin(
+                task.getAssignedUserId(),
+                "Bu görev size atanmamış."
+        );
+
         task.setStatus(TaskStatus.IN_PROGRESS);
         return taskRepository.save(task);
     }
@@ -127,7 +142,8 @@ public class TaskAssignmentService {
         kabulTask.setPlanId(planId);
         kabulTask.setAssignedUserId(planOwner.getId());
         kabulTask.setAssignedAt(LocalDateTime.now());
-        kabulTask.setDueDate(LocalDateTime.now().plusHours(TASK_DEADLINE_HOURS));
+        // Süre, plandaki ürünlere göre hesaplanır (bozulabilir ürün varsa 2, yoksa 4 saat).
+        kabulTask.setDueDate(taskDeadlineCalculator.calculateDueDate(planId));
         kabulTask.setTaskType(TaskType.ACCEPTANCE);
         kabulTask.setStatus(TaskStatus.PENDING);
 

@@ -38,11 +38,7 @@ public class NeedListController {
     */
     @PostMapping("/plan")
     public ResponseEntity<?> createNeedListPlan(@RequestBody NeedListPlanRequest request) {
-        try {
-            return ResponseEntity.status(HttpStatus.CREATED).body(needListService.createNeedListPlan(request));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        return ResponseEntity.status(HttpStatus.CREATED).body(needListService.createNeedListPlan(request));
     }
 
     /*
@@ -52,22 +48,14 @@ public class NeedListController {
     */
     @PostMapping("/plan/{planId}/items")
     public ResponseEntity<?> addExtraItems(@PathVariable Long planId, @RequestBody AddExtraItemsRequest request) {
-        try {
-            return ResponseEntity.status(HttpStatus.CREATED).body(needListService.addExtraItemsToPlan(planId, request));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        return ResponseEntity.status(HttpStatus.CREATED).body(needListService.addExtraItemsToPlan(planId, request));
     }
 
     // Bir planı (tüm ürünleriyle birlikte) iptal eder. Yalnızca bu planId'ye ait kayıtlar etkilenir.
     @DeleteMapping("/plan/{planId}")
     public ResponseEntity<?> cancelNeedListPlan(@PathVariable Long planId, @RequestParam Long userId) {
-        try {
-            needListService.cancelNeedListPlan(planId, userId);
-            return ResponseEntity.ok("Plan iptal edildi");
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        needListService.cancelNeedListPlan(planId, userId);
+        return ResponseEntity.ok("Plan iptal edildi");
     }
 
     // Tüm ihtiyaç listelerini getirir.

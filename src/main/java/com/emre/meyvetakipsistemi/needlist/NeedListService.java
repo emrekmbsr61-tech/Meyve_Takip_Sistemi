@@ -3,10 +3,13 @@ package com.emre.meyvetakipsistemi.needlist;
 import com.emre.meyvetakipsistemi.auditlog.AuditActionType;
 import com.emre.meyvetakipsistemi.auditlog.AuditLog;
 import com.emre.meyvetakipsistemi.auditlog.AuditLogService;
+import com.emre.meyvetakipsistemi.auditlog.AuditStatus;
+import com.emre.meyvetakipsistemi.auth.CurrentUserService;
 import com.emre.meyvetakipsistemi.deliveryplan.DeliveryPlan;
 import com.emre.meyvetakipsistemi.deliveryplan.DeliveryPlanRepository;
 import com.emre.meyvetakipsistemi.deliveryplan.DeliveryPlanService;
 import com.emre.meyvetakipsistemi.deliveryplan.PlanStatus;
+import com.emre.meyvetakipsistemi.exception.ResourceNotFoundException;
 import com.emre.meyvetakipsistemi.fruit.Fruit;
 import com.emre.meyvetakipsistemi.fruit.FruitRepository;
 import com.emre.meyvetakipsistemi.needlist.dto.AddExtraItemsRequest;
@@ -18,6 +21,7 @@ import com.emre.meyvetakipsistemi.needlist.dto.NeedListResponse;
 import com.emre.meyvetakipsistemi.notification.NotificationService;
 import com.emre.meyvetakipsistemi.task.TaskAssignment;
 import com.emre.meyvetakipsistemi.task.TaskAssignmentRepository;
+import com.emre.meyvetakipsistemi.task.TaskDeadlineCalculator;
 import com.emre.meyvetakipsistemi.task.TaskStatus;
 import com.emre.meyvetakipsistemi.task.TaskType;
 import com.emre.meyvetakipsistemi.user.User;
@@ -36,12 +40,6 @@ import java.util.Set;
 @Service
 public class NeedListService {
 
-    /*
-      ALIM görevi için süre standardı. PurchaseService/CollectionService'teki
-      TASK_DEADLINE_HOURS ile aynı geçici varsayımdır.
-    */
-    private static final int TASK_DEADLINE_HOURS = 4;
-
     private final NeedListRepository needListRepository;
     private final FruitRepository fruitRepository;
     private final UserRepository userRepository;
@@ -50,6 +48,8 @@ public class NeedListService {
     private final AuditLogService auditLogService;
     private final TaskAssignmentRepository taskAssignmentRepository;
     private final NotificationService notificationService;
+    private final CurrentUserService currentUserService;
+    private final TaskDeadlineCalculator taskDeadlineCalculator;
 
     // Spring gerekli repository ve service nesnelerini buradan otomatik verir.
     public NeedListService(
@@ -60,7 +60,9 @@ public class NeedListService {
             DeliveryPlanService deliveryPlanService,
             AuditLogService auditLogService,
             TaskAssignmentRepository taskAssignmentRepository,
-            NotificationService notificationService
+            NotificationService notificationService,
+            CurrentUserService currentUserService,
+            TaskDeadlineCalculator taskDeadlineCalculator
     ) {
         this.needListRepository = needListRepository;
         this.fruitRepository = fruitRepository;
@@ -70,6 +72,8 @@ public class NeedListService {
         this.auditLogService = auditLogService;
         this.taskAssignmentRepository = taskAssignmentRepository;
         this.notificationService = notificationService;
+        this.currentUserService = currentUserService;
+        this.taskDeadlineCalculator = taskDeadlineCalculator;
     }
 
     /*
@@ -164,8 +168,6 @@ public class NeedListService {
                 creator.getFullName() + " " + request.getStoreId() + " mağazası için yeni plan oluşturdu. Plan #" + savedPlan.getId()
         );
 
-        assignAlimTask(savedPlan.getId());
-
         // 2) Her ürün için, backend'in ürettiği planId ile NeedList satırı oluşturulur.
         List<NeedListResponse> items = new ArrayList<>();
 
@@ -193,6 +195,15 @@ public class NeedListService {
 
             items.add(convertToResponse(savedNeedList));
         }
+
+        /*
+          3) ALIM görevi ancak ürün satırları kaydedildikten SONRA atanır.
+          Sebep: görevin süresi plandaki ürünlere bakılarak hesaplanıyor
+          (bozulabilir ürün varsa 2, yoksa 4 saat - bkz. TaskDeadlineCalculator).
+          Bu çağrı yukarıda, satırlar yazılmadan yapılırsa plan o an boş görünür
+          ve süre her zaman yanlışlıkla 4 saat çıkar.
+        */
+        assignAlimTask(savedPlan.getId());
 
         DeliveryPlanService.PlanStoreInfo storeInfo = deliveryPlanService.resolveStoreInfo(savedPlan.getId());
 
@@ -258,10 +269,22 @@ public class NeedListService {
         return convertToResponse(needList);
     }
 
-    // ID'ye göre ihtiyaç listesini günceller.
+    /*
+      ID'ye göre ihtiyaç listesini günceller.
+
+      Sahiplik kuralı: Bir kaydı yalnızca onu OLUŞTURAN kullanıcı veya ADMIN
+      değiştirebilir. Kimlik, istekten (request.createdBy) DEĞİL, doğrulanmış
+      JWT token'dan okunur - aksi halde kullanıcı isteğe başkasının id'sini
+      yazarak onun kaydını değiştirebilirdi (bkz. CurrentUserService).
+    */
     public NeedListResponse updateNeedList(Long id, NeedListRequest request) {
         NeedList needList = needListRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("İhtiyaç listesi bulunamadı"));
+                .orElseThrow(() -> new ResourceNotFoundException("İhtiyaç listesi bulunamadı"));
+
+        currentUserService.requireOwnerOrAdmin(
+                needList.getCreatedBy(),
+                "Yalnızca kendi oluşturduğunuz ihtiyaç kaydını güncelleyebilirsiniz."
+        );
 
         needList.setPlanId(request.getPlanId());
         needList.setFruitId(request.getFruitId());
@@ -284,10 +307,18 @@ public class NeedListService {
         return convertToResponse(updatedNeedList);
     }
 
-    // ID'ye göre ihtiyaç listesini siler.
+    /*
+      ID'ye göre ihtiyaç listesini siler.
+      updateNeedList ile aynı sahiplik kuralı geçerlidir.
+    */
     public void deleteNeedList(Long id) {
         NeedList needList = needListRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("İhtiyaç listesi bulunamadı"));
+                .orElseThrow(() -> new ResourceNotFoundException("İhtiyaç listesi bulunamadı"));
+
+        currentUserService.requireOwnerOrAdmin(
+                needList.getCreatedBy(),
+                "Yalnızca kendi oluşturduğunuz ihtiyaç kaydını silebilirsiniz."
+        );
 
         Long userId = needList.getCreatedBy();
         String userFullName = getUserFullName(userId);
@@ -347,6 +378,7 @@ public class NeedListService {
                 createdByName,
                 needList.getCreatedDate(),
                 needList.getNotes(),
+                storeInfo.generalNotes(),
                 needList.getStatus(),
                 updatedByName,
                 updatedDate
@@ -478,7 +510,8 @@ public class NeedListService {
             alimTask.setPlanId(planId);
             alimTask.setAssignedUserId(manager.getId());
             alimTask.setAssignedAt(LocalDateTime.now());
-            alimTask.setDueDate(LocalDateTime.now().plusHours(TASK_DEADLINE_HOURS));
+            // Süre, plandaki ürünlere göre hesaplanır (bozulabilir ürün varsa 2, yoksa 4 saat).
+            alimTask.setDueDate(taskDeadlineCalculator.calculateDueDate(planId));
             alimTask.setTaskType(TaskType.ALIM);
             alimTask.setStatus(TaskStatus.PENDING);
 
@@ -490,7 +523,10 @@ public class NeedListService {
                     AuditActionType.TASK_ASSIGNED,
                     "TaskAssignment",
                     savedTask.getId(),
-                    "Plan #" + planId + " için " + manager.getFullName() + " kullanıcısına alım görevi atandı."
+                    "Plan #" + planId + " için " + manager.getFullName() + " kullanıcısına alım görevi atandı.",
+                    planId,
+                    AuditStatus.SUCCESS,
+                    null
             );
 
             notificationService.notifyUser(

@@ -2,6 +2,7 @@ package com.emre.meyvetakipsistemi.purchase;
 
 import com.emre.meyvetakipsistemi.auditlog.AuditActionType;
 import com.emre.meyvetakipsistemi.auditlog.AuditLogService;
+import com.emre.meyvetakipsistemi.auditlog.AuditStatus;
 import com.emre.meyvetakipsistemi.purchase.dto.PurchasePlanRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -23,11 +24,7 @@ public class PurchaseController {
     // Alımı henüz tamamlanmamış planları döner.
     @GetMapping("/pending-plans")
     public ResponseEntity<?> getPendingPurchasePlans(@RequestParam Long managerId) {
-        try {
-            return ResponseEntity.ok(purchaseService.getPendingPurchasePlans(managerId));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        return ResponseEntity.ok(purchaseService.getPendingPurchasePlans(managerId));
     }
 
     // Seçilen planın ürünlerini ve ihtiyaç bilgilerini döner.
@@ -36,11 +33,7 @@ public class PurchaseController {
             @PathVariable Long planId,
             @RequestParam Long managerId
     ) {
-        try {
-            return ResponseEntity.ok(purchaseService.getPurchasePlanDetail(managerId, planId));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        return ResponseEntity.ok(purchaseService.getPurchasePlanDetail(managerId, planId));
     }
 
     // Bir planın tüm ürünleri için alım kaydı oluşturur.
@@ -51,9 +44,13 @@ public class PurchaseController {
                     .body(purchaseService.createPurchasesForPlan(request));
         } catch (RuntimeException e) {
             /*
-              Not: Bu noktada purchaseService'in @Transactional metodu zaten hata
-              fırlatıp geri alınmış (rollback) durumdadır. Bu yüzden burada log
-              atmak, başarısız işlemle birlikte geri alınmaz; ayrı bir kayıt olarak kalır.
+              Buradaki catch hatayı YUTMAZ; yalnızca başarısız alım denemesini
+              loglamak içindir. Log yazıldıktan sonra hata tekrar fırlatılır ve
+              cevabı GlobalExceptionHandler üretir - böylece hata biçimi diğer
+              tüm endpoint'lerle aynı kalır.
+
+              Not: purchaseService'in @Transactional metodu bu noktada zaten geri
+              alınmıştır (rollback); bu yüzden buradaki log ayrı bir kayıt olarak kalır.
             */
             auditLogService.createLog(
                     request.getCreatedBy(),
@@ -61,10 +58,13 @@ public class PurchaseController {
                     AuditActionType.PURCHASE_FAILED,
                     "Purchase",
                     request.getPlanId(),
-                    e.getMessage()
+                    e.getMessage(),
+                    request.getPlanId(),
+                    AuditStatus.ERROR,
+                    null
             );
 
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+            throw e;
         }
     }
 }

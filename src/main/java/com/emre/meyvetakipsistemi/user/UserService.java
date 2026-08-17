@@ -1,5 +1,7 @@
 package com.emre.meyvetakipsistemi.user;
 
+import com.emre.meyvetakipsistemi.exception.ResourceNotFoundException;
+import com.emre.meyvetakipsistemi.user.dto.UserResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -28,22 +30,39 @@ public class UserService {
       kullanıcı ADMIN onayı bekleyen PENDING rolüyle kaydedilir. Aksi halde bu
       eski/ham endpoint, yönetici onay sistemini tamamen atlamak için kullanılabilirdi.
     */
-    public User createUser(User user){
+    public UserResponse createUser(User user){
         user.setPassword(passwordEncoder.encode(user.getPassword()));
         user.setRole(UserRole.PENDING);
         user.setIsVerified(false);
-        return userRepository.save(user);
+        return toResponse(userRepository.save(user));
     }
 
     //tüm kullanıcıları listeleme
-    public List<User>   getAllUsers(){
-        return userRepository.findAll();
+    public List<UserResponse> getAllUsers(){
+        return userRepository.findAll().stream().map(this::toResponse).toList();
     }
 
     //Id değerine göre tek bir kullanıcı getirme
-    public  User getUserById(Long id){
-        return userRepository.findById(id)
-                .orElseThrow();
+    public UserResponse getUserById(Long id){
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Kullanıcı bulunamadı"));
+
+        return toResponse(user);
+    }
+
+    /*
+      User entity'sini dışarı açılabilecek güvenli hale çevirir.
+      Şifre alanı buraya HİÇBİR ZAMAN taşınmaz (bkz. UserResponse).
+    */
+    private UserResponse toResponse(User user) {
+        return new UserResponse(
+                user.getId(),
+                user.getUsername(),
+                user.getEmail(),
+                user.getFullName(),
+                user.getRole(),
+                user.getIsVerified()
+        );
     }
 
     /*
@@ -51,9 +70,10 @@ public class UserService {
       Yalnızca isVerified=true olanlar döner: e-posta doğrulamasını henüz
       tamamlamamış bir kullanıcı, kod girmeden bu listeye düşmemelidir.
     */
-    public List<User> getPendingUsers(Long adminId) {
+    public List<UserResponse> getPendingUsers(Long adminId) {
         requireAdmin(adminId);
-        return userRepository.findByRoleAndIsVerifiedTrue(UserRole.PENDING);
+        return userRepository.findByRoleAndIsVerifiedTrue(UserRole.PENDING)
+                .stream().map(this::toResponse).toList();
     }
 
     /*
@@ -61,7 +81,7 @@ public class UserService {
       Yalnızca ADMIN çağırabilir. PENDING rolü tekrar atanamaz (bu bir "onay"
       işlemidir, kullanıcıyı tekrar bekleme durumuna düşürmek anlamsızdır).
     */
-    public User assignRole(Long adminId, Long targetUserId, String roleName) {
+    public UserResponse assignRole(Long adminId, Long targetUserId, String roleName) {
         requireAdmin(adminId);
 
         if (roleName == null || roleName.isBlank()) {
@@ -81,11 +101,11 @@ public class UserService {
         }
 
         User targetUser = userRepository.findById(targetUserId)
-                .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı"));
+                .orElseThrow(() -> new ResourceNotFoundException("Kullanıcı bulunamadı"));
 
         targetUser.setRole(newRole);
 
-        return userRepository.save(targetUser);
+        return toResponse(userRepository.save(targetUser));
     }
 
     /*

@@ -1,6 +1,5 @@
 package com.emre.meyvetakipsistemi.plansummary;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,12 +15,9 @@ public class PlanSummaryController {
         this.planSummaryService = planSummaryService;
     }
 
+    // Hata yönetimi merkezidir (bkz. GlobalExceptionHandler); burada try/catch yoktur.
     @GetMapping("/{planId}/summary")
     public ResponseEntity<?> getPlanSummary(@PathVariable Long planId, @RequestParam Long userId) {
-        try {
-            return ResponseEntity.ok(planSummaryService.getPlanSummary(userId, planId));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        return ResponseEntity.ok(planSummaryService.getPlanSummary(userId, planId));
     }
 }

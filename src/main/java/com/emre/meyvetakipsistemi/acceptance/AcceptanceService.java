@@ -8,9 +8,11 @@ import com.emre.meyvetakipsistemi.auditlog.AuditActionType;
 import com.emre.meyvetakipsistemi.auditlog.AuditLogService;
 import com.emre.meyvetakipsistemi.collection.Collection;
 import com.emre.meyvetakipsistemi.collection.CollectionRepository;
+import com.emre.meyvetakipsistemi.consistency.ConsistencyCheckService;
 import com.emre.meyvetakipsistemi.deliveryplan.DeliveryPlanService;
 import com.emre.meyvetakipsistemi.fruit.Fruit;
 import com.emre.meyvetakipsistemi.fruit.FruitRepository;
+import com.emre.meyvetakipsistemi.mail.PlanSummaryMailService;
 import com.emre.meyvetakipsistemi.needlist.NeedList;
 import com.emre.meyvetakipsistemi.needlist.NeedListRepository;
 import com.emre.meyvetakipsistemi.needlist.NeedListStatus;
@@ -44,6 +46,8 @@ public class AcceptanceService {
     private final DeliveryPlanService deliveryPlanService;
     private final CollectionRepository collectionRepository;
     private final NotificationService notificationService;
+    private final ConsistencyCheckService consistencyCheckService;
+    private final PlanSummaryMailService planSummaryMailService;
 
     public AcceptanceService(
             AcceptanceRepository acceptanceRepository,
@@ -55,7 +59,9 @@ public class AcceptanceService {
             FruitRepository fruitRepository,
             DeliveryPlanService deliveryPlanService,
             CollectionRepository collectionRepository,
-            NotificationService notificationService
+            NotificationService notificationService,
+            ConsistencyCheckService consistencyCheckService,
+            PlanSummaryMailService planSummaryMailService
     ) {
         this.acceptanceRepository = acceptanceRepository;
         this.itemRepository = itemRepository;
@@ -67,23 +73,21 @@ public class AcceptanceService {
         this.deliveryPlanService = deliveryPlanService;
         this.collectionRepository = collectionRepository;
         this.notificationService = notificationService;
+        this.consistencyCheckService = consistencyCheckService;
+        this.planSummaryMailService = planSummaryMailService;
     }
 
     /*
-      Bir planın fruitId -> toplanan (Collection) miktarı eşlemesini üretir.
-
-      İş kuralı (kullanıcıyla netleştirildi): "beklenen miktar" mağazanın
-      İSTEDİĞİ miktardır (NeedList.requiredQuantity), şoförün getirdiği miktar
-      DEĞİL. Bu harita yalnızca BİLGİ/karşılaştırma amaçlı "teslim edilen"
-      değerini üretmek için kullanılır — doğrulamada sınır olarak kullanılmaz
-      (bkz. create() ve getAcceptanceChecklist()).
+      Bir planın fruitId -> Collection kaydı eşlemesini üretir. Hem "teslim
+      edilen" miktarı (yalnızca bilgi amaçlı, sınır olarak kullanılmaz) hem de
+      şoförün toplama sırasında girdiği notu (driverNote) buradan okunur.
     */
-    private Map<Long, Double> resolveCollectedByFruit(Long planId) {
-        Map<Long, Double> collectedByFruit = new HashMap<>();
+    private Map<Long, Collection> resolveCollectionsByFruit(Long planId) {
+        Map<Long, Collection> collectionsByFruit = new HashMap<>();
         for (Collection collection : collectionRepository.findByPlanId(planId)) {
-            collectedByFruit.put(collection.getFruitId(), collection.getCollectedQuantity());
+            collectionsByFruit.put(collection.getFruitId(), collection);
         }
-        return collectedByFruit;
+        return collectionsByFruit;
     }
 
     /*
@@ -112,7 +116,7 @@ public class AcceptanceService {
           "Sonucu Gör" (PlanSummary) ekranı bunu oradan okur — burada ayrıca
           saklanmasına gerek yoktur.
         */
-        Map<Long, Double> collectedByFruit = resolveCollectedByFruit(request.getPlanId());
+        Map<Long, Collection> collectionsByFruit = resolveCollectionsByFruit(request.getPlanId());
 
         // Planın henüz kabul edilmemiş tüm NeedList satırları: Purchase/Collection'daki
         // "tüm ürünler birlikte gönderilmeli" kuralı burada da uygulanır, aksi halde
@@ -151,7 +155,7 @@ public class AcceptanceService {
                 throw new IllegalArgumentException("Bu ürün için mal kabul zaten kaydedilmiş.");
             }
 
-            if (!collectedByFruit.containsKey(need.getFruitId())) {
+            if (!collectionsByFruit.containsKey(need.getFruitId())) {
                 throw new IllegalArgumentException(
                         "Bu ürün için toplama kaydı bulunamadığından mal kabul yapılamaz.");
             }
@@ -159,8 +163,10 @@ public class AcceptanceService {
             double accepted = requestItem.getAcceptedQuantity() == null ? 0 : requestItem.getAcceptedQuantity();
             double rejected = requestItem.getRejectedQuantity() == null ? 0 : requestItem.getRejectedQuantity();
 
-            if (accepted < 0 || rejected < 0 || accepted + rejected > need.getRequiredQuantity()) {
-                throw new IllegalArgumentException("Kabul ve red miktarları beklenen (ihtiyaç) miktarını geçemez.");
+            // Not: kabul + red toplamının "beklenen" miktarı geçemeyeceği kısıtı
+            // kullanıcı isteğiyle kaldırıldı; yalnızca negatif değer engellenir.
+            if (accepted < 0 || rejected < 0) {
+                throw new IllegalArgumentException("Kabul ve red miktarları negatif olamaz.");
             }
 
             validatedNeeds.add(need);
@@ -223,22 +229,36 @@ public class AcceptanceService {
                 "Mal kabul tamamlandı (Plan #" + request.getPlanId() + ")."
         );
 
+        /*
+          Planın son aşaması tamamlandı: dört karşılaştırmanın tamamı burada
+          çalışır (İhtiyaç-Alım, Alım-Toplama, Toplama-Kabul, İhtiyaç-Kabul).
+          Taşıma sırasındaki kayıp/hırsızlık ancak bu noktada tespit edilebilir.
+        */
+        consistencyCheckService.runCheck(request.getPlanId(), receiver.getId(), receiver.getFullName(),
+                ConsistencyCheckService.CheckStage.AFTER_ACCEPTANCE);
+
+        /*
+          Plan tamamlandı: sürecin tamamını (ihtiyaç/alım/toplama/kabul tablosu ve
+          finansal kayıp özeti) içeren HTML mail, işlemi yapan personellere ve
+          adminlere gönderilir. Mail gönderilemese bile mal kabul geçerli kalır.
+        */
+        planSummaryMailService.sendPlanCompletedMail(
+                request.getPlanId(), receiver.getId(), receiver.getFullName());
+
         return saved;
     }
 
     /*
       Kabul ekranının, kaydetmeden ÖNCE göstereceği "beklenen miktar" listesini
-      döner. AcceptanceService.create()'deki doğrulamayla AYNI kaynağı
-      (NeedList.requiredQuantity) kullanır — böylece ekranda görünen "beklenen"
-      değeri ile backend'in kabul edeceği üst sınır her zaman birebir aynıdır.
-      Teslim edilen (Collection.collectedQuantity) ayrıca, yalnızca bilgi
-      amaçlı ("fazla/eksik geldi" karşılaştırması için) taşınır.
+      döner. expectedQuantity, create()'deki AYNI kaynaktan (NeedList.requiredQuantity)
+      gelir; artık doğrulama sınırı olarak kullanılmasa da referans olarak gösterilir.
+      Ayrıca şoförün toplama sırasında girdiği notu (driverNote) da taşır.
     */
     public List<AcceptanceChecklistItemResponse> getAcceptanceChecklist(Long userId, Long planId) {
         User receiver = requireStorePersonnel(userId);
         requireAssignedActiveKabulTask(planId, receiver);
 
-        Map<Long, Double> collectedByFruit = resolveCollectedByFruit(planId);
+        Map<Long, Collection> collectionsByFruit = resolveCollectionsByFruit(planId);
 
         List<NeedList> openNeeds = needListRepository.findByPlanId(planId).stream()
                 .filter(need -> need.getStatus() == NeedListStatus.CREATED)
@@ -248,6 +268,7 @@ public class AcceptanceService {
 
         for (NeedList need : openNeeds) {
             Fruit fruit = fruitRepository.findById(need.getFruitId()).orElse(null);
+            Collection collection = collectionsByFruit.get(need.getFruitId());
 
             result.add(new AcceptanceChecklistItemResponse(
                     need.getId(),
@@ -255,7 +276,8 @@ public class AcceptanceService {
                     fruit == null ? "Bilinmeyen meyve" : fruit.getName(),
                     fruit == null ? null : fruit.getUnit(),
                     need.getRequiredQuantity(),
-                    collectedByFruit.get(need.getFruitId())
+                    collection == null ? null : collection.getCollectedQuantity(),
+                    collection == null ? null : collection.getNotes()
             ));
         }
 

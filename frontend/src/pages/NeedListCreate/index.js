@@ -746,12 +746,32 @@ export default function NeedListCreate({ currentUser, navigation }) {
                               </Text>
                             </Pressable>
 
-                            <Text style={styles.modalQuantityValue}>
-                              {String(
-                                quantities[fruit.id] || 0
-                              ).replace(".", ",")}{" "}
-                              {getUnitLabel(fruit.unit)}
-                            </Text>
+                            {/*
+                              Çok yüksek miktarlarda (ör. büyük bir kasa siparişi)
+                              yalnızca +/- ile artırmak zahmetli olduğu için miktar
+                              burada doğrudan yazılabilir; +/- butonları da aynı
+                              anda çalışmaya devam eder.
+                            */}
+                            <View style={styles.modalQuantityInputBox}>
+                              <TextInput
+                                value={String(
+                                  quantities[fruit.id] ?? ""
+                                ).replace(".", ",")}
+                                onChangeText={(value) =>
+                                  handleQuantityChange(fruit, value)
+                                }
+                                keyboardType={
+                                  requiresWholeNumber(fruit.unit)
+                                    ? "number-pad"
+                                    : "decimal-pad"
+                                }
+                                style={styles.modalQuantityInput}
+                              />
+
+                              <Text style={styles.modalQuantityUnit}>
+                                {getUnitLabel(fruit.unit)}
+                              </Text>
+                            </View>
 
                             <Pressable
                               style={styles.stepButton}
@@ -1195,12 +1215,31 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
 
-  modalQuantityValue: {
-    color: colors.white,
+  modalQuantityInputBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: colors.white,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    minWidth: 90,
+  },
+
+  modalQuantityInput: {
+    color: colors.text,
     fontWeight: "800",
     fontSize: 15,
-    minWidth: 76,
+    minWidth: 40,
     textAlign: "center",
+    padding: 0,
+  },
+
+  modalQuantityUnit: {
+    color: colors.gray,
+    fontWeight: "700",
+    fontSize: 12,
   },
 
   paginationRow: {

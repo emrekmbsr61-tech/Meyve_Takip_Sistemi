@@ -11,6 +11,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { getTasks } from "../../services/taskService";
+import CountdownText from "../../components/CountdownText";
 
 const colors = {
   green: "#2E7D32",
@@ -34,19 +35,10 @@ const TASK_STATUS_LABELS = {
   PENDING: "Bekliyor",
   IN_PROGRESS: "Devam Ediyor",
   COMPLETED: "Tamamlandı",
+  // Süresi geçtiği için sistem tarafından otomatik işaretlenen görev
+  // (bkz. backend OverdueTaskScheduler).
+  OVERDUE: "Gecikti",
 };
-
-// dueDate'e göre kalan süreyi okunabilir metne çevirir.
-function formatRemaining(dueDate) {
-  if (!dueDate) return "Süre belirtilmedi";
-
-  const diffMs = new Date(dueDate).getTime() - Date.now();
-  if (diffMs <= 0) return "Süresi geçti";
-
-  const hours = Math.floor(diffMs / (1000 * 60 * 60));
-  const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-  return `${hours} sa ${minutes} dk kaldı`;
-}
 
 /*
   ŞOFÖR rolüne atanmış görevleri listeler. Sistemde SOFOR'a iki tür görev
@@ -151,7 +143,7 @@ export default function SoforTaskList({ currentUser, navigation }) {
             </View>
 
             <View style={styles.footerRow}>
-              <Text style={styles.remainingText}>{formatRemaining(task.dueDate)}</Text>
+              <CountdownText dueDate={task.dueDate} style={styles.remainingText} />
               <Ionicons name="chevron-forward" size={18} color={colors.muted} />
             </View>
           </Pressable>

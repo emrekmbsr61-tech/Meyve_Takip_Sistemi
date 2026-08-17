@@ -2,6 +2,7 @@ package com.emre.meyvetakipsistemi.purchase;
 
 import com.emre.meyvetakipsistemi.auditlog.AuditActionType;
 import com.emre.meyvetakipsistemi.auditlog.AuditLogService;
+import com.emre.meyvetakipsistemi.auditlog.AuditStatus;
 import com.emre.meyvetakipsistemi.deliveryplan.DeliveryPlanService;
 import com.emre.meyvetakipsistemi.fruit.Fruit;
 import com.emre.meyvetakipsistemi.fruit.FruitRepository;
@@ -14,6 +15,7 @@ import com.emre.meyvetakipsistemi.purchase.dto.*;
 import com.emre.meyvetakipsistemi.supplier.SupplierService;
 import com.emre.meyvetakipsistemi.task.TaskAssignment;
 import com.emre.meyvetakipsistemi.task.TaskAssignmentRepository;
+import com.emre.meyvetakipsistemi.task.TaskDeadlineCalculator;
 import com.emre.meyvetakipsistemi.task.TaskStatus;
 import com.emre.meyvetakipsistemi.task.TaskType;
 import com.emre.meyvetakipsistemi.user.User;
@@ -31,14 +33,6 @@ import java.util.stream.Collectors;
 @Service
 public class PurchaseService {
 
-    /*
-      ALIM tamamlanınca oluşturulacak TOPLAMA görevinin süre standardı.
-      Not: Projede henüz meyvenin bozulabilirliğine (isPerishable) göre değişen
-      gerçek bir görev süresi kuralı yok; bu yüzden şimdilik sabit 4 saat
-      kullanılıyor (görev tanımında da istenen geçici varsayım).
-    */
-    private static final int TASK_DEADLINE_HOURS = 4;
-
     private final PurchaseRepository purchaseRepository;
     private final NeedListRepository needListRepository;
     private final FruitRepository fruitRepository;
@@ -49,6 +43,7 @@ public class PurchaseService {
     private final TaskAssignmentRepository taskAssignmentRepository;
     private final AuditLogService auditLogService;
     private final NotificationService notificationService;
+    private final TaskDeadlineCalculator taskDeadlineCalculator;
 
     public PurchaseService(
             PurchaseRepository purchaseRepository,
@@ -60,7 +55,8 @@ public class PurchaseService {
             PriceHistoryService priceHistoryService,
             TaskAssignmentRepository taskAssignmentRepository,
             AuditLogService auditLogService,
-            NotificationService notificationService
+            NotificationService notificationService,
+            TaskDeadlineCalculator taskDeadlineCalculator
     ) {
         this.purchaseRepository = purchaseRepository;
         this.needListRepository = needListRepository;
@@ -72,6 +68,7 @@ public class PurchaseService {
         this.taskAssignmentRepository = taskAssignmentRepository;
         this.auditLogService = auditLogService;
         this.notificationService = notificationService;
+        this.taskDeadlineCalculator = taskDeadlineCalculator;
     }
 
     // Alımı henüz tamamlanmamış (en az bir ürünü hâlâ alınmamış) planları listeler.
@@ -151,6 +148,16 @@ public class PurchaseService {
                     Fruit fruit = fruitRepository.findById(fruitId).orElse(null);
                     boolean alreadyPurchased = purchaseRepository.existsByPlanIdAndFruitId(planId, fruitId);
 
+                    /*
+                      Personelin bu ürün için yazdığı not(lar). Aynı meyve birden
+                      fazla ihtiyaç satırında geçiyorsa notlar tek metinde birleşir;
+                      hiç not yoksa null kalır ve ekranda gösterilmez.
+                    */
+                    String staffNote = group.stream()
+                            .map(NeedList::getNotes)
+                            .filter(note -> note != null && !note.isBlank())
+                            .collect(Collectors.joining(" | "));
+
                     return new PurchasePlanItemResponse(
                             representativeNeedListId,
                             fruitId,
@@ -162,12 +169,16 @@ public class PurchaseService {
                             fruit == null ? null : fruit.getImagePath(),
                             fruit == null || fruit.getProfitMarginPercent() == null
                                     ? 20.0
-                                    : fruit.getProfitMarginPercent()
+                                    : fruit.getProfitMarginPercent(),
+                            staffNote.isBlank() ? null : staffNote
                     );
                 })
                 .toList();
 
-        return new PurchasePlanDetailResponse(planId, items);
+        // Planın geneline yazılmış not da müdüre iletilir (bkz. PlanStoreInfo.generalNotes).
+        String planNotes = deliveryPlanService.resolveStoreInfo(planId).generalNotes();
+
+        return new PurchasePlanDetailResponse(planId, planNotes, items);
     }
 
     /*
@@ -358,7 +369,10 @@ public class PurchaseService {
                             AuditActionType.TASK_COMPLETED,
                             "TaskAssignment",
                             alimTask.getId(),
-                            "Plan #" + planId + " için ALIM görevi tamamlandı."
+                            "Plan #" + planId + " için ALIM görevi tamamlandı.",
+                            planId,
+                            AuditStatus.SUCCESS,
+                            null
                     );
                 });
 
@@ -379,7 +393,8 @@ public class PurchaseService {
         toplamaTask.setPlanId(planId);
         toplamaTask.setAssignedUserId(sofor.getId());
         toplamaTask.setAssignedAt(LocalDateTime.now());
-        toplamaTask.setDueDate(LocalDateTime.now().plusHours(TASK_DEADLINE_HOURS));
+        // Süre, plandaki ürünlere göre hesaplanır (bozulabilir ürün varsa 2, yoksa 4 saat).
+        toplamaTask.setDueDate(taskDeadlineCalculator.calculateDueDate(planId));
         toplamaTask.setTaskType(TaskType.TOPLAMA);
         toplamaTask.setStatus(TaskStatus.PENDING);
 

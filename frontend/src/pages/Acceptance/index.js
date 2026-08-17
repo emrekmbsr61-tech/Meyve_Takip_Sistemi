@@ -26,12 +26,10 @@ export default function Acceptance({ currentUser, route }) {
   const [selectedPlanId, setSelectedPlanId] = useState(route.params?.planId || null);
 
   /*
-    checklistItems: SEÇİLİ planın ürünleri. İki ayrı miktar backend'den ayrı
-    ayrı gelir (bkz. AcceptanceService.getAcceptanceChecklist):
-      - expectedQuantity: mağazanın İSTEDİĞİ miktar (NeedList.requiredQuantity)
-        — "BEKLENEN", kabul/red doğrulamasının gerçek üst sınırı.
-      - deliveredQuantity: şoförün TESLİM ETTİĞİ miktar (Collection.collectedQuantity)
-        — yalnızca bilgi/karşılaştırma amaçlı, sınır olarak kullanılmaz.
+    checklistItems: SEÇİLİ planın ürünleri (bkz. AcceptanceService.getAcceptanceChecklist):
+      - expectedQuantity: mağazanın İSTEDİĞİ miktar (NeedList.requiredQuantity) — "BEKLENEN",
+        artık kabul/red için üst sınır değil, sade referans.
+      - driverNote: şoförün toplama sırasında bu ürün için yazdığı not (varsa).
   */
   const [checklistItems, setChecklistItems] = useState([]);
   const [itemsLoading, setItemsLoading] = useState(false);
@@ -127,7 +125,6 @@ export default function Acceptance({ currentUser, route }) {
         const entry = quantities[item.needListId] || {};
         const acceptedQuantity = Number(entry.accepted || 0);
         const rejectedQuantity = Number(entry.rejected || 0);
-        if (acceptedQuantity + rejectedQuantity > item.expectedQuantity) throw new Error(`${item.fruitName} için toplam miktar bekleneni geçemez.`);
         return { needListId: item.needListId, fruitId: item.fruitId, expectedQuantity: item.expectedQuantity, acceptedQuantity, rejectedQuantity, damaged: Boolean(damaged[item.needListId]), rejectionReason: reasons[item.needListId] || "" };
       });
       setSaving(true); setMessage("");
@@ -173,16 +170,13 @@ export default function Acceptance({ currentUser, route }) {
         (kullanıcıyla netleştirildi). Bu yüzden burada yalnızca HAM sayılar
         gösterilir, "fazla geldi/eksik geldi" gibi yorum cümleleri kurulmaz:
         - BEKLENEN (sağ üstte, expectedValue): NeedList.requiredQuantity — mağazanın
-          istediği miktar, kabul/red doğrulamasının GERÇEK üst sınırı.
-        - Teslim edilen (ürün adının altında): Collection.collectedQuantity —
-          şoförün getirdiği miktar, sade bilgi amaçlı, yorum eklenmez.
-        Beklenen ile teslim edilen arasındaki farkın yorumu (fazla/eksik teslimat)
-        artık Tamamlanan İşlemler > Sonucu Gör ekranında gösteriliyor.
+          istediği miktar, artık kabul/red için üst sınır değil, sade referans.
+        - Teslim edilen miktar burada gösterilmez (kullanıcı istemedi); onun
+          yerine şoförün toplama sırasında girdiği not (driverNote) gösterilir.
       */
-      const delivered = item.deliveredQuantity;
 
       return <View key={item.needListId} style={styles.card}>
-      <View style={styles.productHeader}><View style={styles.imagePlaceholder}><Ionicons name="image-outline" size={27} color="#AAB7AE" /></View><View style={{ flex: 1 }}><Text style={styles.productName}>{item.fruitName}</Text>{delivered != null ? <Text style={styles.deliveredText}>Teslim edilen: {delivered} {unitLabel}</Text> : null}</View><View><Text style={styles.expectedLabel}>BEKLENEN (İHTİYAÇ)</Text><Text style={styles.expectedValue}>{item.expectedQuantity} {unitLabel}</Text></View></View>
+      <View style={styles.productHeader}><View style={styles.imagePlaceholder}><Ionicons name="image-outline" size={27} color="#AAB7AE" /></View><View style={{ flex: 1 }}><Text style={styles.productName}>{item.fruitName}</Text>{item.driverNote ? <Text style={styles.deliveredText}>Şoför notu: {item.driverNote}</Text> : null}</View><View><Text style={styles.expectedLabel}>BEKLENEN (İHTİYAÇ)</Text><Text style={styles.expectedValue}>{item.expectedQuantity} {unitLabel}</Text></View></View>
       <View style={styles.quantityRow}><View style={styles.quantityArea}><Text style={styles.label}>Kabul edilen</Text><View style={styles.numberBox}><TextInput value={entry.accepted || ""} onChangeText={(value) => setQuantity(item.needListId, "accepted", value)} keyboardType="decimal-pad" placeholder="0" style={styles.numberInput}/><Text style={styles.unit}>{getUnitLabel(item.fruitUnit)}</Text></View></View><View style={styles.quantityArea}><Text style={styles.label}>Reddedilen</Text><View style={styles.numberBox}><TextInput value={entry.rejected || ""} onChangeText={(value) => setQuantity(item.needListId, "rejected", value)} keyboardType="decimal-pad" placeholder="0" style={styles.numberInput}/><Text style={styles.unit}>{getUnitLabel(item.fruitUnit)}</Text></View></View></View>
       <View style={styles.damageRow}><Text style={styles.damageText}>Hasarlı ürün</Text><Switch value={Boolean(damaged[item.needListId])} onValueChange={(value) => setDamaged((current) => ({ ...current, [item.needListId]: value }))} trackColor={{ false: "#D8DEDA", true: "#A9D6AC" }} thumbColor={damaged[item.needListId] ? colors.green : colors.white}/></View>
       <TextInput value={reasons[item.needListId] || ""} onChangeText={(value) => setReasons((current) => ({ ...current, [item.needListId]: value }))} placeholder="Açıklama / red nedeni (opsiyonel)" style={styles.reasonInput}/>

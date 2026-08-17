@@ -4,7 +4,7 @@ import { Platform } from "react-native";
 // Fiziksel Android telefon aynı Wi-Fi ağındaki bilgisayarın yerel IP adresini kullanır.
 const fallbackBaseUrl =
   Platform.OS === "android"
-      ? "http://192.168.1.8:8080/api"
+      ? "http://192.168.36.114:8080/api"
       : "http://localhost:8080/api";
 
 

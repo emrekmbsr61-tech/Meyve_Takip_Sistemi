@@ -3,45 +3,31 @@ import com.emre.meyvetakipsistemi.acceptance.dto.AcceptanceRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import java.util.Map;
+
+/*
+  Hata yönetimi: Burada try/catch YOKTUR. Service'ten fırlatılan hatalar
+  GlobalExceptionHandler tarafından yakalanır ve frontend'e her zaman aynı
+  biçimde (ErrorResponse) JSON olarak döner.
+*/
 @RestController @RequestMapping("/api/acceptances") @CrossOrigin(origins = "*")
 public class AcceptanceController {
  private final AcceptanceService acceptanceService;
  public AcceptanceController(AcceptanceService acceptanceService) { this.acceptanceService = acceptanceService; }
 
- /*
-   Not: Önceden burada try/catch yoktu; Service'ten fırlatılan hata mesajı
-   frontend'e hiç ulaşmıyordu (Spring'in varsayılan 500 hata sayfası dönüyordu).
-   Diğer controller'larla (Purchase/Collection/NeedList) aynı desene getirildi.
-   Body JSON olarak {"message": ...} döner çünkü frontend/acceptanceService.js
-   zaten data?.message okuyor.
- */
  @PostMapping
  public ResponseEntity<?> create(@RequestBody AcceptanceRequest request) {
-     try {
-         return ResponseEntity.status(HttpStatus.CREATED).body(acceptanceService.create(request));
-     } catch (RuntimeException e) {
-         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
-     }
+     return ResponseEntity.status(HttpStatus.CREATED).body(acceptanceService.create(request));
  }
 
  // "Tamamlanan İşlemler" ekranı için geçmiş mal kabul kayıtlarını döner.
  @GetMapping("/completed")
  public ResponseEntity<?> getCompletedAcceptances(@RequestParam Long userId) {
-     try {
-         return ResponseEntity.ok(acceptanceService.getCompletedAcceptances(userId));
-     } catch (RuntimeException e) {
-         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
-     }
+     return ResponseEntity.ok(acceptanceService.getCompletedAcceptances(userId));
  }
 
- // Kabul ekranının kaydetmeden önce göstereceği "beklenen miktar" (toplanan miktar) listesini döner.
+ // Kabul ekranının kaydetmeden önce göstereceği "beklenen miktar" listesini döner.
  @GetMapping("/checklist/{planId}")
  public ResponseEntity<?> getAcceptanceChecklist(@PathVariable Long planId, @RequestParam Long userId) {
-     try {
-         return ResponseEntity.ok(acceptanceService.getAcceptanceChecklist(userId, planId));
-     } catch (RuntimeException e) {
-         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
-     }
+     return ResponseEntity.ok(acceptanceService.getAcceptanceChecklist(userId, planId));
  }
 }

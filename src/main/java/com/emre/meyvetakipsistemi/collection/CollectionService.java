@@ -3,6 +3,7 @@ package com.emre.meyvetakipsistemi.collection;
 import com.emre.meyvetakipsistemi.auditlog.AuditActionType;
 import com.emre.meyvetakipsistemi.auditlog.AuditLogService;
 import com.emre.meyvetakipsistemi.collection.dto.*;
+import com.emre.meyvetakipsistemi.consistency.ConsistencyCheckService;
 import com.emre.meyvetakipsistemi.deliveryplan.DeliveryPlanService;
 import com.emre.meyvetakipsistemi.fruit.Fruit;
 import com.emre.meyvetakipsistemi.fruit.FruitRepository;
@@ -14,6 +15,7 @@ import com.emre.meyvetakipsistemi.supplier.Supplier;
 import com.emre.meyvetakipsistemi.supplier.SupplierRepository;
 import com.emre.meyvetakipsistemi.task.TaskAssignment;
 import com.emre.meyvetakipsistemi.task.TaskAssignmentRepository;
+import com.emre.meyvetakipsistemi.task.TaskDeadlineCalculator;
 import com.emre.meyvetakipsistemi.task.TaskStatus;
 import com.emre.meyvetakipsistemi.task.TaskType;
 import com.emre.meyvetakipsistemi.user.User;
@@ -34,12 +36,6 @@ import java.util.stream.Collectors;
 @Service
 public class CollectionService {
 
-    /*
-      KABUL görevi için süre standardı. PurchaseService'teki TASK_DEADLINE_HOURS
-      ile aynı geçici varsayımdır (meyveye göre değişen gerçek bir kural yok).
-    */
-    private static final int TASK_DEADLINE_HOURS = 4;
-
     private final CollectionRepository collectionRepository;
     private final NeedListRepository needListRepository;
     private final FruitRepository fruitRepository;
@@ -49,6 +45,8 @@ public class CollectionService {
     private final DeliveryPlanService deliveryPlanService;
     private final TaskAssignmentRepository taskAssignmentRepository;
     private final AuditLogService auditLogService;
+    private final ConsistencyCheckService consistencyCheckService;
+    private final TaskDeadlineCalculator taskDeadlineCalculator;
 
     public CollectionService(
             CollectionRepository collectionRepository,
@@ -59,7 +57,9 @@ public class CollectionService {
             UserRepository userRepository,
             DeliveryPlanService deliveryPlanService,
             TaskAssignmentRepository taskAssignmentRepository,
-            AuditLogService auditLogService
+            AuditLogService auditLogService,
+            ConsistencyCheckService consistencyCheckService,
+            TaskDeadlineCalculator taskDeadlineCalculator
     ) {
         this.collectionRepository = collectionRepository;
         this.needListRepository = needListRepository;
@@ -70,6 +70,8 @@ public class CollectionService {
         this.deliveryPlanService = deliveryPlanService;
         this.taskAssignmentRepository = taskAssignmentRepository;
         this.auditLogService = auditLogService;
+        this.consistencyCheckService = consistencyCheckService;
+        this.taskDeadlineCalculator = taskDeadlineCalculator;
     }
 
     /*
@@ -107,19 +109,21 @@ public class CollectionService {
     private CollectionPlanItemResponse buildCollectionPlanItem(Long planId, Long fruitId) {
         Fruit fruit = fruitRepository.findById(fruitId).orElse(null);
 
-        Supplier supplier = purchaseRepository.findByPlanId(planId).stream()
-                .filter(purchase -> fruitId.equals(purchase.getFruitId()))
+        Purchase purchase = purchaseRepository.findByPlanId(planId).stream()
+                .filter(item -> fruitId.equals(item.getFruitId()))
                 .findFirst()
-                .map(Purchase::getSupplierId)
-                .flatMap(supplierRepository::findById)
                 .orElse(null);
+
+        Supplier supplier = purchase == null ? null
+                : supplierRepository.findById(purchase.getSupplierId()).orElse(null);
 
         return new CollectionPlanItemResponse(
                 fruitId,
                 fruit == null ? "Bilinmeyen meyve" : fruit.getName(),
                 fruit == null ? null : fruit.getUnit(),
                 supplier == null ? null : supplier.getSupplierCode(),
-                supplier == null ? "Bilinmeyen tedarikçi" : supplier.getSupplierName()
+                supplier == null ? "Bilinmeyen tedarikçi" : supplier.getSupplierName(),
+                purchase == null ? null : purchase.getNotes()
         );
     }
 
@@ -200,6 +204,14 @@ public class CollectionService {
                         + savedCollections.size() + " ürünlük toplama kaydetti."
         );
 
+        /*
+          Toplama kaydedildiği anda otomatik denetim: alınan miktar ile toplanan
+          miktar tutuyor mu? Tutmuyorsa halde kayıp/hırsızlık olabilir ve bu
+          AuditLog'a CRITICAL olarak yazılır (bkz. ConsistencyCheckService).
+        */
+        consistencyCheckService.runCheck(request.getPlanId(), driver.getId(), driver.getFullName(),
+                ConsistencyCheckService.CheckStage.AFTER_COLLECTION);
+
         return new CollectionResultResponse(
                 request.getPlanId(),
                 savedCollections.size(),
@@ -268,7 +280,8 @@ public class CollectionService {
         teslimatTask.setPlanId(planId);
         teslimatTask.setAssignedUserId(driver.getId());
         teslimatTask.setAssignedAt(LocalDateTime.now());
-        teslimatTask.setDueDate(LocalDateTime.now().plusHours(TASK_DEADLINE_HOURS));
+        // Süre, plandaki ürünlere göre hesaplanır (bozulabilir ürün varsa 2, yoksa 4 saat).
+        teslimatTask.setDueDate(taskDeadlineCalculator.calculateDueDate(planId));
         teslimatTask.setTaskType(TaskType.TESLIMAT);
         teslimatTask.setStatus(TaskStatus.PENDING);
 

@@ -72,7 +72,16 @@ public class PlanSummaryService {
     */
     public PlanSummaryResponse getPlanSummary(Long userId, Long planId) {
         requireViewer(userId);
+        return buildSummary(planId);
+    }
 
+    /*
+      Özeti YETKİ KONTROLÜ YAPMADAN üretir.
+      Yalnızca sistemin kendi içinden çağrılmalıdır (ör. plan tamamlandığında
+      özet mailini hazırlayan PlanSummaryMailService). Bir kullanıcı isteğine
+      cevap verirken her zaman yukarıdaki getPlanSummary kullanılmalıdır.
+    */
+    public PlanSummaryResponse buildSummary(Long planId) {
         List<NeedList> needs = needListRepository.findByPlanId(planId);
 
         if (needs.isEmpty()) {

@@ -31,10 +31,6 @@ public class TaskAssignmentController {
     // Şoförün TESLİMAT görevini tamamlar; aynı plan için gerekiyorsa yeni bir KABUL görevi atar.
     @PatchMapping("/{id}/complete-delivery")
     public ResponseEntity<?> completeDelivery(@PathVariable Long id, @RequestParam Long driverId) {
-        try {
-            return ResponseEntity.ok(service.completeDelivery(id, driverId));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        return ResponseEntity.ok(service.completeDelivery(id, driverId));
     }
 }

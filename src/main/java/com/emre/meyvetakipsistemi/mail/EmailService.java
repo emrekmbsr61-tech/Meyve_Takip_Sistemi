@@ -1,13 +1,18 @@
 package com.emre.meyvetakipsistemi.mail;
 
 import jakarta.annotation.PostConstruct;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.MailException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
 
 /*
   Kullanıcıya doğrulama kodu içeren e-postayı göndermekten sorumludur.
@@ -77,6 +82,42 @@ public class EmailService {
             );
 
             throw new RuntimeException("Doğrulama e-postası gönderilemedi. Lütfen tekrar deneyin.");
+        }
+    }
+
+    /*
+      HTML biçiminde e-posta gönderir (plan tamamlandığında gönderilen özet
+      maili için kullanılır). SimpleMailMessage yalnızca düz metin
+      gönderebildiği için burada MimeMessage kullanılır.
+
+      Bu metot HATA FIRLATMAZ: mail gönderilemese bile çağıran işlemin
+      (mal kabulün) geri alınmaması gerekir. Sorun yalnızca loglanır ve
+      gönderilip gönderilmediği boolean olarak döner.
+    */
+    public boolean sendHtmlMail(List<String> recipients, String subject, String htmlBody) {
+        if (isBlank(mailUsername) || isBlank(mailPassword)) {
+            logger.warn("Mail ayarlari eksik oldugu icin ozet maili gonderilemedi.");
+            return false;
+        }
+
+        if (recipients == null || recipients.isEmpty()) {
+            logger.warn("Ozet maili icin gecerli alici adresi bulunamadi.");
+            return false;
+        }
+
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, false, "UTF-8");
+
+            helper.setTo(recipients.toArray(new String[0]));
+            helper.setSubject(subject);
+            helper.setText(htmlBody, true); // true = icerik HTML'dir
+
+            mailSender.send(message);
+            return true;
+        } catch (MessagingException | MailException e) {
+            logger.error("Ozet maili gonderilemedi: {}", e.getClass().getSimpleName());
+            return false;
         }
     }
 

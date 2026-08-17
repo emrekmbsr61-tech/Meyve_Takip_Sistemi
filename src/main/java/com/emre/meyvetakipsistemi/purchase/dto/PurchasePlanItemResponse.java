@@ -29,4 +29,12 @@ public class PurchasePlanItemResponse {
 
     // Fruit.profitMarginPercent ile aynı değer; satış fiyatının otomatik hesaplanması için kullanılır.
     private Double profitMarginPercent;
+
+    /*
+      Mağaza personelinin BU ÜRÜN için ihtiyaç listesinde yazdığı not
+      (NeedList.notes). Not zincirinin ilk halkasıdır:
+        personel -> müdür -> şoför -> personel
+      Aynı meyve için birden fazla ihtiyaç satırı varsa notlar birleştirilir.
+    */
+    private String staffNote;
 }

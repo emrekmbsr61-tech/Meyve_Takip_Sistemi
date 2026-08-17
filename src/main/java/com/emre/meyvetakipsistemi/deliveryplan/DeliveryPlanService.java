@@ -45,8 +45,15 @@ public class DeliveryPlanService {
 
     }
 
-    // Bir planId için mağaza kimliği ve mağaza adını taşır (yalnızca görüntüleme amaçlı).
-    public record PlanStoreInfo(String storeId, String storeName) {
+    /*
+      Bir planId için mağaza kimliği, mağaza adı ve planın genel notunu taşır
+      (yalnızca görüntüleme amaçlı).
+
+      generalNotes: İhtiyaç planı oluşturulurken yazılan "Plan Notu". Bu not
+      DeliveryPlan kaydında saklanır; NeedList satırlarının kendi notlarından
+      FARKLIDIR. Eskiden hiçbir yerde okunmadığı için ekranda hiç görünmüyordu.
+    */
+    public record PlanStoreInfo(String storeId, String storeName, String generalNotes) {
     }
 
     /*
@@ -63,21 +70,25 @@ public class DeliveryPlanService {
     */
     public PlanStoreInfo resolveStoreInfo(Long planId) {
         if (planId == null) {
-            return new PlanStoreInfo(null, "Mağaza bilgisi yok");
+            return new PlanStoreInfo(null, "Mağaza bilgisi yok", null);
         }
 
         return deliveryPlanRepository.findById(planId)
                 .map(plan -> {
                     String storeId = plan.getStoreId();
                     String storeName = StoreDirectory.nameOf(storeId);
-                    return new PlanStoreInfo(storeId, storeName != null ? storeName : "Mağaza #" + storeId);
+                    return new PlanStoreInfo(
+                            storeId,
+                            storeName != null ? storeName : "Mağaza #" + storeId,
+                            plan.getGeneralNotes()
+                    );
                 })
                 .orElseGet(() -> {
                     String legacyStoreId = String.valueOf(planId);
                     String legacyName = StoreDirectory.nameOf(legacyStoreId);
                     return legacyName != null
-                            ? new PlanStoreInfo(legacyStoreId, legacyName)
-                            : new PlanStoreInfo(null, "Eski Plan #" + planId);
+                            ? new PlanStoreInfo(legacyStoreId, legacyName, null)
+                            : new PlanStoreInfo(null, "Eski Plan #" + planId, null);
                 });
     }
 

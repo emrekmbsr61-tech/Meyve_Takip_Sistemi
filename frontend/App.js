@@ -1,13 +1,18 @@
 import { useEffect, useState } from "react";
 
-// Taslak Mal Kabul ve Aktif Görev ekranlarında kullanıyoruz.
-import { View, Text,TextInput,Pressable, ScrollView,ActivityIndicator,Modal,Image } from "react-native";
+import { View, Text, Pressable, ActivityIndicator } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import Ionicons from "@expo/vector-icons/Ionicons";
 
 // Uygulama açılışında kayıtlı oturumu (token + kullanıcı) geri yüklemek için.
 import { loadSession, clearSession, getToken } from "./src/services/tokenStorage";
 
 // Gerçek zamanlı bildirimler için merkezi WebSocket bağlantısı.
-import { connect as connectWebSocket, disconnect as disconnectWebSocket } from "./src/services/websocketService";
+import {
+  connect as connectWebSocket,
+  disconnect as disconnectWebSocket,
+  addNotificationListener,
+} from "./src/services/websocketService";
 
 // Telefonun üstündeki saat, Wi-Fi ve şarj alanını düzenler.
 import { StatusBar } from "expo-status-bar";
@@ -21,6 +26,7 @@ import Login from "./src/pages/Login";
 import Register from "./src/pages/Register";
 import VerifyEmail from "./src/pages/VerifyEmail";
 import Home from "./src/pages/Home";
+import Dashboard from "./src/pages/Dashboard";
 import Fruits from "./src/pages/Fruits";
 import NeedListCreate from "./src/pages/NeedListCreate";
 import NeedListList from "./src/pages/NeedListList";
@@ -40,20 +46,9 @@ const Stack = createNativeStackNavigator();
 const colors = {
   primary: "#2E7D32",
   primaryDark: "#1B5E20",
-  primaryLight: "#EAF5EC",
 
   white: "#FFFFFF",
   background: "#F4F7F4",
-  border: "#DDE7DF",
-
-  text: "#17211B",
-  gray: "#6B7280",
-
-  orange: "#D97706",
-  orangeLight: "#FFF7E6",
-
-  purple: "#7C3AED",
-  purpleLight: "#F3EEFF",
 };
 
 /*
@@ -80,6 +75,15 @@ function NeedListListScreen({ currentUser }) {
 */
 function FruitsScreen() {
   return <Fruits />;
+}
+
+/*
+  Ana ekrandaki "Özet" kartına basılınca açılır.
+  Hangi kartların (özellikle alım tutarlarının) gösterileceği role göre
+  değiştiği için currentUser gönderilir.
+*/
+function DashboardScreen({ currentUser }) {
+  return <Dashboard currentUser={currentUser} />;
 }
 
 function AcceptanceScreen(props) {
@@ -129,105 +133,6 @@ function CompletedAcceptancesScreen({ currentUser }) {
 }
 
 /*
-  Bu ekran şu an sadece frontend taslağıdır.
-  Daha sonra gerçek Acceptance backend yapısına bağlanacak.
-*/
-function AcceptancePlaceholderScreen() {
-  return (
-    <ScrollView
-      style={styles.screenBackground}
-      contentContainerStyle={styles.screenContent}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.headerCard}>
-        <Text style={styles.headerTitle}>Mal Kabul Sayımı</Text>
-
-        <Text style={styles.headerDescription}>
-          Mağazaya teslim edilen ürünlerin gerçek miktarları bu ekranda
-          kaydedilecek.
-        </Text>
-      </View>
-
-      <View style={styles.contentCard}>
-        <Text style={styles.cardTitle}>Teslimat Planı</Text>
-
-        <Text style={styles.cardDescription}>
-          Mağazaya gelmiş ve mal kabul işlemi bekleyen teslimat planları burada
-          listelenecek.
-        </Text>
-      </View>
-
-      <View style={styles.contentCard}>
-        <Text style={styles.cardTitle}>Ürün Sayımı</Text>
-
-        <Text style={styles.cardDescription}>
-          Her ürün için beklenen, kabul edilen ve reddedilen miktarlar
-          girilecek.
-        </Text>
-      </View>
-
-      <View style={styles.infoCard}>
-        <Text style={styles.infoTitle}>Backend bağlantısı hazırlanacak</Text>
-
-        <Text style={styles.infoText}>
-          Bu ekran Acceptance entity, DTO, repository, service ve controller
-          yapılarıyla backend sistemine bağlanacak.
-        </Text>
-      </View>
-    </ScrollView>
-  );
-}
-
-/*
-  Bu ekran da şu an frontend taslağıdır.
-  Daha sonra TaskAssignment backend yapısından gerçek görevleri çekecek.
-*/
-function ActiveTasksPlaceholderScreen() {
-  return (
-    <ScrollView
-      style={styles.screenBackground}
-      contentContainerStyle={styles.screenContent}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.headerCard}>
-        <Text style={styles.headerTitle}>Aktif Görevler</Text>
-
-        <Text style={styles.headerDescription}>
-          Mağaza personeline atanmış görevler ve kalan süreleri burada
-          gösterilecek.
-        </Text>
-      </View>
-
-      <View style={styles.taskCard}>
-        <View style={styles.taskBadge}>
-          <Text style={styles.taskBadgeText}>BEKLEYEN GÖREV</Text>
-        </View>
-
-        <Text style={styles.cardTitle}>Mal Kabul Görevi</Text>
-
-        <Text style={styles.cardDescription}>
-          Plan #3 için mal kabul sayımı bekleniyor.
-        </Text>
-
-        <View style={styles.timeBox}>
-          <Text style={styles.timeLabel}>Kalan süre</Text>
-          <Text style={styles.timeText}>03 saat 45 dakika</Text>
-        </View>
-      </View>
-
-      <View style={styles.infoCard}>
-        <Text style={styles.infoTitle}>Backend bağlantısı hazırlanacak</Text>
-
-        <Text style={styles.infoText}>
-          TaskAssignment yapısı tamamlandığında kullanıcıya ait gerçek görevler
-          bu ekranda listelenecek.
-        </Text>
-      </View>
-    </ScrollView>
-  );
-}
-
-/*
   Uygulamamızın ana kapısı burasıdır.
   Kullanıcı giriş yaptı mı diye burada kontrol ediyoruz.
 */
@@ -255,6 +160,35 @@ export default function App() {
       })
       .finally(() => setCheckingSession(false));
   }, []);
+
+  /*
+    notificationBanner: WebSocket'ten gelen bildirimi, kullanıcı hangi ekranda
+    olursa olsun ekranın üstünde kısa süreliğine gösteren küçük bir kutu.
+    Öncesinde bildirimler yalnızca ActiveTasks ekranı açıkken fark ediliyordu;
+    artık currentUser var olduğu sürece (yani oturum açıkken) her zaman dinlenir.
+  */
+  const [notificationBanner, setNotificationBanner] = useState(null);
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const removeListener = addNotificationListener((payload) => {
+      setNotificationBanner({
+        id: Date.now(),
+        message: payload?.message || "Yeni bildirim",
+      });
+    });
+
+    return removeListener;
+  }, [currentUser]);
+
+  // Bildirim kutusu 4 saniye sonra kendiliğinden kaybolur.
+  useEffect(() => {
+    if (!notificationBanner) return;
+
+    const timer = setTimeout(() => setNotificationBanner(null), 4000);
+    return () => clearTimeout(timer);
+  }, [notificationBanner]);
 
   /*
     Giriş yapmadan önceki ekranlar arasındaki geçişi (Login/Register/VerifyEmail)
@@ -331,6 +265,7 @@ export default function App() {
     Bu durumda navigation sistemini ve uygulama ekranlarını açıyoruz.
   */
   return (
+    <>
     <NavigationContainer>
       <Stack.Navigator
         screenOptions={{
@@ -374,6 +309,16 @@ export default function App() {
               }}
             />
           )}
+        </Stack.Screen>
+
+        {/* Ana ekrandaki "Özet" kartına basılınca bu ekran açılır. */}
+        <Stack.Screen
+          name="Dashboard"
+          options={{
+            title: "Özet",
+          }}
+        >
+          {() => <DashboardScreen currentUser={currentUser} />}
         </Stack.Screen>
 
         {/*
@@ -511,129 +456,57 @@ export default function App() {
 
       <StatusBar style="light" />
     </NavigationContainer>
+
+    {notificationBanner ? (
+      <SafeAreaView
+        edges={["top"]}
+        style={styles.notificationSafeArea}
+        pointerEvents="box-none"
+      >
+        <Pressable
+          style={styles.notificationBanner}
+          onPress={() => setNotificationBanner(null)}
+        >
+          <Ionicons name="notifications" size={18} color={colors.white} />
+          <Text style={styles.notificationBannerText} numberOfLines={2}>
+            {notificationBanner.message}
+          </Text>
+        </Pressable>
+      </SafeAreaView>
+    ) : null}
+    </>
   );
 }
 
-/*
-  Buradaki kodlar ekranların çalışma mantığını değil,
-  sadece tasarımını belirler.
-*/
+// Yalnızca üstteki bildirim kutusunun tasarımını belirler.
 const styles = {
-  screenBackground: {
-    flex: 1,
-    backgroundColor: colors.background,
+  notificationSafeArea: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
   },
 
-  screenContent: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-
-  headerCard: {
-    backgroundColor: colors.primaryDark,
-    padding: 22,
-    borderRadius: 20,
-    marginBottom: 18,
-  },
-
-  headerTitle: {
-    color: colors.white,
-    fontSize: 24,
-    fontWeight: "bold",
-  },
-
-  headerDescription: {
-    color: "#D8EAD9",
-    fontSize: 15,
-    lineHeight: 22,
+  notificationBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 14,
     marginTop: 8,
-  },
-
-  contentCard: {
-    backgroundColor: colors.white,
-    padding: 18,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: 14,
-  },
-
-  cardTitle: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: "bold",
-  },
-
-  cardDescription: {
-    color: colors.gray,
-    fontSize: 15,
-    lineHeight: 21,
-    marginTop: 6,
-  },
-
-  infoCard: {
-    backgroundColor: colors.primaryLight,
-    padding: 17,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "#BBD9BF",
-    marginTop: 2,
-  },
-
-  infoTitle: {
-    color: colors.primaryDark,
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-
-  infoText: {
-    color: colors.text,
-    fontSize: 14,
-    lineHeight: 21,
-    marginTop: 6,
-  },
-
-  taskCard: {
-    backgroundColor: colors.white,
-    padding: 18,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: 14,
-  },
-
-  taskBadge: {
-    alignSelf: "flex-start",
-    backgroundColor: colors.purpleLight,
-    paddingVertical: 6,
-    paddingHorizontal: 11,
-    borderRadius: 20,
-    marginBottom: 12,
-  },
-
-  taskBadgeText: {
-    color: colors.purple,
-    fontSize: 12,
-    fontWeight: "bold",
-  },
-
-  timeBox: {
-    backgroundColor: colors.orangeLight,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     borderRadius: 14,
-    padding: 14,
-    marginTop: 15,
+    backgroundColor: colors.primaryDark,
+    shadowColor: "#000",
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
+    elevation: 6,
   },
 
-  timeLabel: {
-    color: colors.orange,
-    fontSize: 13,
-    fontWeight: "600",
-  },
-
-  timeText: {
-    color: colors.orange,
-    fontSize: 17,
-    fontWeight: "bold",
-    marginTop: 3,
+  notificationBannerText: {
+    flex: 1,
+    color: colors.white,
+    fontWeight: "700",
   },
 };

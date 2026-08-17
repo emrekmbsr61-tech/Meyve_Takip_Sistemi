@@ -34,7 +34,18 @@ public class NeedListResponse {
     private String createdByName;
 
     private LocalDateTime createdDate;
+
+    // Bu ÜRÜN satırına yazılmış not (her ürünün kendi notu).
     private String notes;
+
+    /*
+      Planın geneli için yazılmış not (DeliveryPlan.generalNotes).
+      "Yeni İhtiyaç Planı" ekranındaki "Plan Notu" kutusuna yazılan metindir ve
+      aynı plandaki tüm satırlarda aynı değeri taşır. Ürün notlarıyla
+      karıştırılmamalıdır.
+    */
+    private String planNotes;
+
     private NeedListStatus status;
 
     // Bu ikisi yalnızca kayıt gerçekten güncellenmişse dolu gelir (AuditLog'dan türetilir).

@@ -5,6 +5,7 @@ public enum AuditActionType {
 
     USER_LOGIN("Kullanıcı giriş yaptı"),
     USER_LOGIN_FAILED("Kullanıcı giriş yapamadı"),
+    USER_LOGOUT("Kullanıcı çıkış yaptı"),
 
     NEED_LIST_CREATED("İhtiyaç listesi oluşturuldu"),
     NEED_LIST_UPDATED("İhtiyaç listesi güncellendi"),
@@ -18,7 +19,17 @@ public enum AuditActionType {
     TASK_ASSIGNED("Görev atandı"),
 
     DELIVERY_PLAN_CREATED("Teslimat planı oluşturuldu"),
-    DELIVERY_PLAN_CANCELLED("Teslimat planı iptal edildi");
+    DELIVERY_PLAN_CANCELLED("Teslimat planı iptal edildi"),
+
+    /*
+      Sistemin kendi yaptığı otomatik denetimler. Bir kullanıcı işlemi değildir:
+      CONSISTENCY_CHECK, bir aşama kaydedilince miktarların tutarlılığını
+      karşılaştıran otomatik kontroldür (bkz. ConsistencyCheckService).
+      SYSTEM_CHECK ise arka planda çalışan zamanlanmış görev denetimidir
+      (ör. süresi geçen görevlerin işaretlenmesi).
+    */
+    CONSISTENCY_CHECK("Miktar tutarlılık kontrolü yapıldı"),
+    SYSTEM_CHECK("Sistem otomatik denetimi çalıştı");
 
     private final String description;
 

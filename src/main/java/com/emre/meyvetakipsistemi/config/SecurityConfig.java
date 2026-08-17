@@ -5,6 +5,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
@@ -25,8 +26,15 @@ import java.util.List;
   "giris yapilmis mi" kontrolu - mevcut rol kontrolleri Service katmaninda
   oldugu gibi kaliyor, buraya dokunulmadi).
 */
+/*
+  @EnableMethodSecurity: Controller/Service metotlarının üzerine yazılan
+  @PreAuthorize anotasyonlarını devreye alır. Rol bilgisi JWT'den okunup
+  ROLE_<rol> yetkisi olarak yerleştirildiği için (bkz. JwtAuthenticationFilter)
+  @PreAuthorize("hasRole('ADMIN')") gibi kurallar doğrudan çalışır.
+*/
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
@@ -56,7 +64,8 @@ public class SecurityConfig {
                                 "/api/auth/**",
                                 "/swagger-ui/**",
                                 "/v3/api-docs/**",
-                                "/ws/**"
+                                "/ws/**",
+                                "/fruits/**"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )

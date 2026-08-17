@@ -44,6 +44,14 @@ const colors = {
   ROLE_MENU_KEYS listesinde hangi kartları görebileceğini belirtir.
 */
 const ALL_MENU_ITEMS = {
+  Dashboard: {
+    screen: "Dashboard",
+    title: "Özet",
+    description: "Genel durumu ve tespit edilen kayıpları gör.",
+    icon: "stats-chart-outline",
+    iconColor: colors.primary,
+    iconBackground: colors.primaryLight,
+  },
   NeedListCreate: {
     screen: "NeedListCreate",
     title: "İhtiyaç Oluştur",
@@ -134,6 +142,7 @@ const ALL_MENU_ITEMS = {
 */
 const ROLE_MENU_KEYS = {
   ADMIN: [
+    "Dashboard",
     "NeedListList",
     "ActiveTasks",
     "PurchaseManagement",
@@ -142,6 +151,7 @@ const ROLE_MENU_KEYS = {
     "AdminAuditLog",
   ],
   MAGAZA_PERSONELI: [
+    "Dashboard",
     "NeedListCreate",
     "NeedListList",
     "Acceptance",
@@ -149,8 +159,8 @@ const ROLE_MENU_KEYS = {
     "CompletedAcceptances",
     "Fruits",
   ],
-  MAGAZA_MUDURU: ["NeedListList", "PurchaseManagement", "ActiveTasks", "Fruits"],
-  SOFOR: ["ActiveTasks", "Fruits"],
+  MAGAZA_MUDURU: ["Dashboard", "NeedListList", "PurchaseManagement", "ActiveTasks", "Fruits"],
+  SOFOR: ["Dashboard", "ActiveTasks", "Fruits"],
 };
 
 // Kullanıcının rolüne göre görebileceği kart listesini üretir.

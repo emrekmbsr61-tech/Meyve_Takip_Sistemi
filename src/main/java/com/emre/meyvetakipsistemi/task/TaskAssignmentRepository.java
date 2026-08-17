@@ -1,9 +1,12 @@
 package com.emre.meyvetakipsistemi.task;
 import org.springframework.data.jpa.repository.JpaRepository;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 public interface TaskAssignmentRepository extends JpaRepository<TaskAssignment, Long> {
  List<TaskAssignment> findByAssignedUserIdOrderByDueDateAsc(Long assignedUserId);
+ // Süresi geçmiş ama hâlâ tamamlanmamış görevleri bulur (bkz. OverdueTaskScheduler).
+ List<TaskAssignment> findByStatusInAndDueDateBefore(List<TaskStatus> statuses, LocalDateTime deadline);
  Optional<TaskAssignment> findByPlanIdAndAssignedUserIdAndTaskType(Long planId, Long assignedUserId, TaskType taskType);
  // Bir planın belirli türdeki görevini (kullanıcıdan bağımsız) bulmak için kullanılır.
  // Purchase tamamlanınca ALIM görevini bulup COMPLETED yapmak ve aynı plan için

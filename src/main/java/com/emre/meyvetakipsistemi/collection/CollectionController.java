@@ -5,7 +5,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-// ŞOFÖR'ün TOPLAMA görevi kapsamındaki toplama (Collection) isteklerini karşılar.
+/*
+  ŞOFÖR'ün TOPLAMA görevi kapsamındaki toplama (Collection) isteklerini karşılar.
+
+  Hata yönetimi: Burada try/catch YOKTUR. Service'ten fırlatılan hatalar
+  GlobalExceptionHandler tarafından yakalanır ve frontend'e her zaman aynı
+  biçimde (ErrorResponse) JSON olarak döner.
+*/
 @RestController
 @RequestMapping("/api/collections")
 @CrossOrigin(origins = "*")
@@ -23,11 +29,7 @@ public class CollectionController {
             @PathVariable Long planId,
             @RequestParam Long driverId
     ) {
-        try {
-            return ResponseEntity.ok(collectionService.getCollectionPlanDetail(driverId, planId));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        return ResponseEntity.ok(collectionService.getCollectionPlanDetail(driverId, planId));
     }
 
     // Şoförün Teslimat Görevi ekranında göreceği, kendi topladığı ürün/miktar özetini döner.
@@ -36,21 +38,13 @@ public class CollectionController {
             @PathVariable Long planId,
             @RequestParam Long driverId
     ) {
-        try {
-            return ResponseEntity.ok(collectionService.getDeliverySummary(driverId, planId));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        return ResponseEntity.ok(collectionService.getDeliverySummary(driverId, planId));
     }
 
     // Bir planın tüm ürünleri için toplama kaydı oluşturur.
     @PostMapping("/plan")
     public ResponseEntity<?> createCollectionsForPlan(@RequestBody CollectionPlanRequest request) {
-        try {
-            return ResponseEntity.status(HttpStatus.CREATED)
-                    .body(collectionService.createCollectionsForPlan(request));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(collectionService.createCollectionsForPlan(request));
     }
 }

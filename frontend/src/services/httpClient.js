@@ -39,8 +39,34 @@ export async function apiRequest(path, options = {}) {
   }
 
   if (!response.ok) {
-    throw new Error(typeof data === "string" && data ? data : "İstek başarısız oldu");
+    throw new Error(extractErrorMessage(data));
   }
 
   return data;
+}
+
+/*
+  Backend hata cevabından kullanıcıya gösterilecek mesajı çıkarır.
+
+  Backend artık tüm hataları tek merkezden (GlobalExceptionHandler) şu biçimde
+  döndürüyor: { timestamp, status, error, message, path }. Bu yüzden önce
+  nesnenin "message" alanına bakılır. Eski/düz metin dönen bir cevap gelirse
+  (ör. Spring'in kendi varsayılan hataları) o da desteklenmeye devam eder.
+*/
+function extractErrorMessage(data) {
+  if (typeof data === "string" && data.trim()) {
+    return data;
+  }
+
+  if (data && typeof data === "object") {
+    if (typeof data.message === "string" && data.message.trim()) {
+      return data.message;
+    }
+
+    if (typeof data.error === "string" && data.error.trim()) {
+      return data.error;
+    }
+  }
+
+  return "İstek başarısız oldu";
 }

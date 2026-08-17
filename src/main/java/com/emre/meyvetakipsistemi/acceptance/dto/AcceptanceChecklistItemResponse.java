@@ -11,22 +11,21 @@ import lombok.Getter;
 
     1) expectedQuantity -> NeedList.requiredQuantity
        Mağaza personelinin İLK istediği miktar ("İhtiyaç" = "Beklenen").
-       Kabul ekranındaki asıl referans VE doğrulama üst sınırı budur (bkz.
-       AcceptanceService.create()) — şoför daha fazla getirse bile personel
-       en fazla bu kadarını kabul/red olarak işleyebilir.
+       Kabul ekranında referans olarak gösterilir; kabul/red miktarları
+       artık bu değerle sınırlanmaz (kullanıcıyla netleştirildi).
 
     2) deliveredQuantity -> Collection.collectedQuantity
        Şoförün gerçekten topladığı ve mağazaya TESLİM ETTİĞİ miktar.
-       Yalnızca BİLGİ/karşılaştırma amaçlıdır; doğrulamada sınır olarak
-       KULLANILMAZ. expectedQuantity'den farklıysa ekranda "fazla/eksik
-       geldi" notu göstermek için kullanılır.
+       Ekranda AYRICA gösterilmez (kullanıcı istemedi), ama ileride
+       "Tamamlanan İşlemler" gibi rapor ekranlarında kullanılabilsin diye
+       DTO'da tutulmaya devam eder.
 
-    3) Mağaza personelinin girdiği "Kabul edilen" / "Reddedilen" miktarlar
+    3) driverNote -> Collection.notes
+       Şoförün toplama sırasında bu ürün için yazdığı not; mağaza
+       personelinin mal kabul sırasında görmesi için buraya taşınır.
+
+    4) Mağaza personelinin girdiği "Kabul edilen" / "Reddedilen" miktarlar
        bu DTO'da YOKTUR — henüz kullanıcı tarafından girilecek değerlerdir.
-
-  Örnek: İhtiyaç 20 KG, şoför 25 KG topladıysa: expectedQuantity=20,
-  deliveredQuantity=25. Personel en fazla 20 KG'ı kabul+red olarak
-  işleyebilir; 5 KG'lık fazlalık ekranda uyarı olarak görünür.
 */
 @Getter
 @AllArgsConstructor
@@ -40,9 +39,12 @@ public class AcceptanceChecklistItemResponse {
 
     private FruitUnit fruitUnit;
 
-    // "Beklenen" — doğrulamanın gerçek üst sınırı (İhtiyaç).
+    // "Beklenen" — mağazanın istediği miktar (İhtiyaç).
     private Double expectedQuantity;
 
     // "Teslim Edilen" — yalnızca bilgi amaçlı (Toplama).
     private Double deliveredQuantity;
+
+    // Şoförün toplama sırasında bu ürün için girdiği not (varsa).
+    private String driverNote;
 }

@@ -321,10 +321,6 @@ export default function SoforTaskDetail({ route, navigation }) {
 
               <View style={styles.infoCard}>
                 <Text style={styles.sectionTitle}>Alacağınız Ürünler</Text>
-                <Text style={styles.sectionNote}>
-                  Aşağıya, müdürün alım miktarından bağımsız olarak kendi
-                  saydığınız miktarı girin.
-                </Text>
 
                 {(planDetail.items || []).length === 0 ? (
                   <Text style={styles.emptyText}>Bu plana ait ürün bulunamadı.</Text>
@@ -342,6 +338,12 @@ export default function SoforTaskDetail({ route, navigation }) {
                           ? `${item.supplierCode} - ${item.supplierName}`
                           : item.supplierName || "Bilinmeyen tedarikçi"}
                       </Text>
+
+                      {item.managerNote ? (
+                        <Text style={styles.managerNoteText}>
+                          Müdür notu: {item.managerNote}
+                        </Text>
+                      ) : null}
 
                       <Text style={styles.label}>
                         Alınan Miktar ({getUnitLabel(item.fruitUnit)})
@@ -523,6 +525,12 @@ const styles = StyleSheet.create({
   },
   productName: { color: colors.text, fontSize: 16, fontWeight: "800" },
   productSupplier: { color: colors.muted, fontSize: 12, marginTop: 3, marginBottom: 4 },
+  managerNoteText: {
+    color: colors.orange,
+    fontSize: 12,
+    fontWeight: "700",
+    marginBottom: 6,
+  },
   label: { color: colors.text, fontWeight: "700", marginTop: 8, marginBottom: 6, fontSize: 13 },
   input: {
     borderWidth: 1,

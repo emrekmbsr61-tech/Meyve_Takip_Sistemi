@@ -65,6 +65,8 @@ export default function PurchaseManagement({ currentUser }) {
   const [message, setMessage] = useState("");
 
   const [selectedPlanId, setSelectedPlanId] = useState(null);
+  // Personelin plan geneline yazdığı not; alım ekranının üstünde gösterilir.
+  const [planNotes, setPlanNotes] = useState("");
   const [selectedStoreName, setSelectedStoreName] = useState(null);
   const [planItems, setPlanItems] = useState([]);
   const [itemValues, setItemValues] = useState({});
@@ -129,6 +131,8 @@ export default function PurchaseManagement({ currentUser }) {
 
       setSelectedPlanId(planId);
       setSelectedStoreName(storeName);
+      // Personelin plan geneline yazdığı not (varsa) müdüre gösterilir.
+      setPlanNotes(detail.planNotes || "");
       setPlanItems(remainingItems);
       setItemValues(initialValues);
       // Farklı bir plana geçildiğinde önceki planın tedarikçi seçimi taşınmasın.
@@ -268,6 +272,14 @@ export default function PurchaseManagement({ currentUser }) {
           {isReadOnly ? " · Salt okunur" : ""}
         </Text>
 
+        {/* Personelin plan geneline yazdığı not (varsa). */}
+        {planNotes ? (
+          <View style={styles.planNoteBox}>
+            <Ionicons name="document-text-outline" size={16} color={colors.green} />
+            <Text style={styles.planNoteText}>{planNotes}</Text>
+          </View>
+        ) : null}
+
         {message ? <Text style={styles.error}>{message}</Text> : null}
 
         {!isReadOnly && suppliers.length === 0 ? (
@@ -366,6 +378,16 @@ const styles = StyleSheet.create({
   },
   heading: { color: colors.dark, fontSize: 21, fontWeight: "800", flexShrink: 1 },
   subheading: { color: colors.muted, marginTop: 3, marginBottom: 12, fontSize: 13 },
+  planNoteBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#EAF5EC",
+    borderRadius: 12,
+    padding: 11,
+    marginBottom: 12,
+  },
+  planNoteText: { flex: 1, color: colors.green, fontSize: 13, fontWeight: "600" },
   supplierPickerButton: {
     flexDirection: "row",
     alignItems: "center",

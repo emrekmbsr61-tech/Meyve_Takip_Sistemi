@@ -33,6 +33,29 @@ public class AuditLog {
     // İşlem yapılan kaydın id bilgisidir.
     private Long entityId;
 
+    /*
+      İşlemin ait olduğu planın id bilgisidir. Aynı planId'ye sahip tüm kayıtlar
+      (NeedList, Purchase, Collection, Acceptance) birbiriyle ilişkilidir; bu alan
+      sayesinde admin log ekranında "şu plana ait tüm hareketler" filtrelenebilir.
+      Plana bağlı olmayan işlemlerde (ör. kullanıcı girişi) null kalır.
+    */
+    private Long planId;
+
+    /*
+      İşlemin önem derecesidir (bkz. AuditStatus). Varsayılan SUCCESS'tir;
+      tutarlılık kontrolleri WARNING/ERROR/CRITICAL değerlerini kullanır.
+    */
+    @Enumerated(EnumType.STRING)
+    private AuditStatus status = AuditStatus.SUCCESS;
+
+    /*
+      Ek bilgiler (JSON metni). Örneğin bir tutarlılık kontrolünde hangi üründe
+      ne kadar fark bulunduğu burada saklanır. Uzun olabileceği için TEXT sütunu
+      olarak tutulur.
+    */
+    @Column(columnDefinition = "TEXT")
+    private String details;
+
     // İnsan tarafından okunabilir açıklama bilgisidir.
     private String description;
 
