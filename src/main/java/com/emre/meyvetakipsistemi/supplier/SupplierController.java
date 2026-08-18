@@ -1,5 +1,6 @@
 package com.emre.meyvetakipsistemi.supplier;
 
+import com.emre.meyvetakipsistemi.supplier.dto.SupplierResponse;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -17,7 +18,7 @@ public class SupplierController {
 
     // Alım ekranında seçilebilecek aktif tedarikçileri döner.
     @GetMapping("/active")
-    public List<Supplier> getActiveSuppliers() {
+    public List<SupplierResponse> getActiveSuppliers() {
         return supplierService.getActiveSuppliers();
     }
 }

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -17,6 +17,7 @@ import {
   getPurchasePlanDetail,
 } from "../../services/purchaseService";
 import { getActiveSuppliers } from "../../services/supplierService";
+import { addNotificationListener } from "../../services/websocketService";
 import PurchaseItemRow from "./PurchaseItemRow";
 import SupplierPickerModal, { formatSupplierLabel } from "./SupplierPickerModal";
 
@@ -67,6 +68,13 @@ export default function PurchaseManagement({ currentUser }) {
   const [selectedPlanId, setSelectedPlanId] = useState(null);
   // Personelin plan geneline yazdığı not; alım ekranının üstünde gösterilir.
   const [planNotes, setPlanNotes] = useState("");
+
+  /*
+    Müdür alım formunu doldururken personel planı değiştirirse burada uyarı
+    tutulur. Form otomatik yenilenmez (girilen veriler kaybolmasın), müdür
+    uyarıyı görüp kendisi listeye dönmeye karar verir.
+  */
+  const [planChangedWarning, setPlanChangedWarning] = useState("");
   const [selectedStoreName, setSelectedStoreName] = useState(null);
   const [planItems, setPlanItems] = useState([]);
   const [itemValues, setItemValues] = useState({});
@@ -107,6 +115,41 @@ export default function PurchaseManagement({ currentUser }) {
     }, [loadPendingPlans])
   );
 
+  /*
+    Ekran AÇIKKEN plan tarafında bir değişiklik olursa müdür anında haberdar
+    olur. useFocusEffect tek başına yetmez: o yalnızca ekrana GİRİLDİĞİNDE
+    çalışır, kullanıcı zaten ekrandayken tetiklenmez.
+
+    İki ayrı davranış vardır:
+      - Liste görünümündeyse: liste sessizce tazelenir.
+      - Bir planın alım formunu DOLDURUYORSA: liste tazelenmez (girdiği
+        veriler kaybolmasın), bunun yerine ekranda uyarı gösterilir. Müdürün
+        eski miktar üzerinden alım yapmasını önlemek için önemlidir.
+  */
+  useEffect(() => {
+    const PLAN_DEGISIKLIK_TIPLERI = [
+      "ALIM_GOREVI_ATANDI",
+      "IHTIYAC_GUNCELLENDI",
+      "IHTIYAC_IPTAL_EDILDI",
+    ];
+
+    const removeListener = addNotificationListener((notification) => {
+      if (!PLAN_DEGISIKLIK_TIPLERI.includes(notification?.type)) {
+        return;
+      }
+
+      if (view === "list") {
+        loadPendingPlans();
+      } else {
+        setPlanChangedWarning(
+          notification.message || "Bu planda değişiklik yapıldı. Listeye dönüp yenileyin."
+        );
+      }
+    });
+
+    return removeListener;
+  }, [loadPendingPlans, view]);
+
   // Bir plan seçildiğinde ürünlerini getirir; yalnızca alımı yapılmamış ürünler için giriş alanı açılır.
   const openPlan = async (planId, storeName) => {
     try {
@@ -133,6 +176,8 @@ export default function PurchaseManagement({ currentUser }) {
       setSelectedStoreName(storeName);
       // Personelin plan geneline yazdığı not (varsa) müdüre gösterilir.
       setPlanNotes(detail.planNotes || "");
+      // Yeni plan açılıyor; önceki plandan kalan değişiklik uyarısı temizlenir.
+      setPlanChangedWarning("");
       setPlanItems(remainingItems);
       setItemValues(initialValues);
       // Farklı bir plana geçildiğinde önceki planın tedarikçi seçimi taşınmasın.
@@ -152,6 +197,8 @@ export default function PurchaseManagement({ currentUser }) {
     setPlanItems([]);
     setItemValues({});
     setSelectedSupplierId(null);
+    setPlanNotes("");
+    setPlanChangedWarning("");
     loadPendingPlans();
   };
 
@@ -280,6 +327,23 @@ export default function PurchaseManagement({ currentUser }) {
           </View>
         ) : null}
 
+        {/*
+          Müdür bu formu doldururken personel planı değiştirdiyse uyarı çıkar.
+          Alım eski miktar üzerinden yapılmasın diye listeye dönüp yenilemesi
+          gerektiği açıkça söylenir.
+        */}
+        {planChangedWarning ? (
+          <Pressable style={styles.planChangedBox} onPress={backToList}>
+            <Ionicons name="refresh-circle" size={20} color={colors.red} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.planChangedText}>{planChangedWarning}</Text>
+              <Text style={styles.planChangedHint}>
+                Güncel miktarlar için dokunun ve planı yeniden açın.
+              </Text>
+            </View>
+          </Pressable>
+        ) : null}
+
         {message ? <Text style={styles.error}>{message}</Text> : null}
 
         {!isReadOnly && suppliers.length === 0 ? (
@@ -388,6 +452,19 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   planNoteText: { flex: 1, color: colors.green, fontSize: 13, fontWeight: "600" },
+  planChangedBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    backgroundColor: "#FDECEC",
+    borderWidth: 1,
+    borderColor: "#F5B8B3",
+    borderRadius: 12,
+    padding: 11,
+    marginBottom: 12,
+  },
+  planChangedText: { color: colors.red, fontSize: 13, fontWeight: "700" },
+  planChangedHint: { color: colors.red, fontSize: 11, marginTop: 2 },
   supplierPickerButton: {
     flexDirection: "row",
     alignItems: "center",

@@ -1,5 +1,6 @@
 package com.emre.meyvetakipsistemi.supplier;
 
+import com.emre.meyvetakipsistemi.supplier.dto.SupplierResponse;
 import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
@@ -17,10 +18,18 @@ public class SupplierService {
 
     // Alım ekranında seçilebilecek aktif tedarikçileri, mümkünse supplierCode'a
     // göre sayısal artan sırada döner.
-    public List<Supplier> getActiveSuppliers() {
+    public List<SupplierResponse> getActiveSuppliers() {
         List<Supplier> suppliers = supplierRepository.findByIsActiveTrue();
         suppliers.sort(Comparator.comparing(this::supplierCodeSortKey));
-        return suppliers;
+
+        return suppliers.stream()
+                .map(supplier -> new SupplierResponse(
+                        supplier.getId(),
+                        supplier.getSupplierCode(),
+                        supplier.getSupplierName(),
+                        supplier.getMarketName()
+                ))
+                .toList();
     }
 
     /*

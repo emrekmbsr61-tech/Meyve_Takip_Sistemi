@@ -1,5 +1,7 @@
 package com.emre.meyvetakipsistemi.collection;
 
+import jakarta.validation.Valid;
+
 import com.emre.meyvetakipsistemi.collection.dto.CollectionPlanRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -43,7 +45,7 @@ public class CollectionController {
 
     // Bir planın tüm ürünleri için toplama kaydı oluşturur.
     @PostMapping("/plan")
-    public ResponseEntity<?> createCollectionsForPlan(@RequestBody CollectionPlanRequest request) {
+    public ResponseEntity<?> createCollectionsForPlan(@Valid @RequestBody CollectionPlanRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(collectionService.createCollectionsForPlan(request));
     }

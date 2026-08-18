@@ -2,6 +2,8 @@ package com.emre.meyvetakipsistemi.collection;
 
 import com.emre.meyvetakipsistemi.auditlog.AuditActionType;
 import com.emre.meyvetakipsistemi.auditlog.AuditLogService;
+import com.emre.meyvetakipsistemi.auditlog.AuditStatus;
+import com.emre.meyvetakipsistemi.notification.NotificationService;
 import com.emre.meyvetakipsistemi.collection.dto.*;
 import com.emre.meyvetakipsistemi.consistency.ConsistencyCheckService;
 import com.emre.meyvetakipsistemi.deliveryplan.DeliveryPlanService;
@@ -47,6 +49,7 @@ public class CollectionService {
     private final AuditLogService auditLogService;
     private final ConsistencyCheckService consistencyCheckService;
     private final TaskDeadlineCalculator taskDeadlineCalculator;
+    private final NotificationService notificationService;
 
     public CollectionService(
             CollectionRepository collectionRepository,
@@ -59,7 +62,8 @@ public class CollectionService {
             TaskAssignmentRepository taskAssignmentRepository,
             AuditLogService auditLogService,
             ConsistencyCheckService consistencyCheckService,
-            TaskDeadlineCalculator taskDeadlineCalculator
+            TaskDeadlineCalculator taskDeadlineCalculator,
+            NotificationService notificationService
     ) {
         this.collectionRepository = collectionRepository;
         this.needListRepository = needListRepository;
@@ -72,6 +76,7 @@ public class CollectionService {
         this.auditLogService = auditLogService;
         this.consistencyCheckService = consistencyCheckService;
         this.taskDeadlineCalculator = taskDeadlineCalculator;
+        this.notificationService = notificationService;
     }
 
     /*
@@ -293,7 +298,22 @@ public class CollectionService {
                 AuditActionType.TASK_ASSIGNED,
                 "TaskAssignment",
                 savedTask.getId(),
-                "Plan #" + planId + " için " + driver.getFullName() + " kullanıcısına teslimat görevi atandı."
+                "Plan #" + planId + " için " + driver.getFullName() + " kullanıcısına teslimat görevi atandı.",
+                planId,
+                AuditStatus.SUCCESS,
+                null
+        );
+
+        /*
+          Şoföre anlık bildirim: diğer aşamalarda (ALIM/TOPLAMA/KABUL) bildirim
+          gönderiliyordu ama TESLİMAT görevi atanırken gönderilmiyordu. Bu yüzden
+          şoförün "Aktif Görevler" ekranı açıkken yeni teslimat görevi anında
+          görünmüyor, ekranı elle yenilemek gerekiyordu.
+        */
+        notificationService.notifyUser(
+                driver.getId(),
+                "TESLIMAT_GOREVI_ATANDI",
+                "Teslimat göreviniz oluşturuldu (Plan #" + planId + ")."
         );
     }
 

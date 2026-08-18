@@ -3,10 +3,14 @@ package com.emre.meyvetakipsistemi.exception;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.LocalDateTime;
 import java.util.stream.Collectors;
@@ -66,6 +70,46 @@ public class GlobalExceptionHandler {
 
         return build(HttpStatus.BAD_REQUEST, "Gecersiz istek",
                 message.isBlank() ? "Gönderilen bilgiler geçersiz." : message, request);
+    }
+
+    /*
+      ---- Spring'in kendi web hataları ----
+      Bunlar aslında İSTEMCİ hatasıdır (yanlış metot, bozuk JSON, eksik parametre).
+      Aşağıdaki en genel Exception yakalayıcısına düşerlerse 500 "Sunucu hatası"
+      olarak görünürler ki bu yanlıştır: sunucuda bir arıza yok, istek hatalı.
+      Bu yüzden her biri kendi doğru durum koduyla ayrıca karşılanır.
+    */
+
+    // Adres doğru ama HTTP metodu yanlış (ör. POST yerine GET) -> 405
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMethodNotSupported(
+            HttpRequestMethodNotSupportedException exception, HttpServletRequest request) {
+        return build(HttpStatus.METHOD_NOT_ALLOWED, "Desteklenmeyen istek turu",
+                "Bu adres " + exception.getMethod() + " isteğini kabul etmiyor.", request);
+    }
+
+    // Gövdedeki JSON okunamıyor (bozuk yazım, yanlış tip) -> 400
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleUnreadableBody(
+            HttpMessageNotReadableException exception, HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, "Gecersiz istek",
+                "Gönderilen veri okunamadı. Lütfen bilgileri kontrol edin.", request);
+    }
+
+    // Zorunlu bir parametre gönderilmemiş (ör. ?userId= eksik) -> 400
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ErrorResponse> handleMissingParam(
+            MissingServletRequestParameterException exception, HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, "Gecersiz istek",
+                "'" + exception.getParameterName() + "' bilgisi gönderilmedi.", request);
+    }
+
+    // Parametre yanlış tipte (ör. id yerine metin gönderilmiş) -> 400
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleTypeMismatch(
+            MethodArgumentTypeMismatchException exception, HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, "Gecersiz istek",
+                "'" + exception.getName() + "' değeri beklenen biçimde değil.", request);
     }
 
     // Geçersiz parametre / iş kuralı ihlali -> 400

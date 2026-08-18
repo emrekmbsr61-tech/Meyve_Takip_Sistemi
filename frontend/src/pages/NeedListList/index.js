@@ -6,6 +6,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { addExtraItemsToPlan, cancelNeedListPlan, getNeedLists, updateNeedList } from "../../services/needListService";
 import { getUnitLabel } from "../../utils/unit";
 import { getNeedListStatusLabel } from "../../utils/status";
+import { addNotificationListener } from "../../services/websocketService";
 import AddExtraProductModal from "./AddExtraProductModal";
 
 // Bu durumdaki bir plan iş akışı olarak tamamlanmıştır (mal kabulü bitmiştir).
@@ -50,6 +51,33 @@ export default function NeedListList({ currentUser }) {
   }, []);
   useEffect(() => { loadNeedLists(); }, [loadNeedLists]);
   useFocusEffect(useCallback(() => { loadNeedLists(); }, [loadNeedLists]));
+
+  /*
+    Ekran AÇIKKEN başka biri bu listedeki bir planı değiştirirse (personel
+    miktar günceller/siler/iptal eder) liste kendiliğinden tazelenir.
+    useFocusEffect tek başına yetmez: yalnızca ekrana GİRİLDİĞİNDE çalışır,
+    kullanıcı zaten ekranda beklerken tetiklenmez. Müdür/admin bu ekranı
+    salt okunur izlerken tam da bu durumdaydı - bildirim geliyordu ama
+    ekran hiç yenilenmiyordu.
+
+    Aktif bir düzenleme sürüyorsa (editingPlanId dolu) yenilenmez; kullanıcı
+    o an elle yazdığı miktarları kaybetmesin diye.
+  */
+  useEffect(() => {
+    const PLAN_DEGISIKLIK_TIPLERI = [
+      "ALIM_GOREVI_ATANDI",
+      "IHTIYAC_GUNCELLENDI",
+      "IHTIYAC_IPTAL_EDILDI",
+    ];
+
+    const removeListener = addNotificationListener((notification) => {
+      if (PLAN_DEGISIKLIK_TIPLERI.includes(notification?.type) && !editingPlanId) {
+        loadNeedLists();
+      }
+    });
+
+    return removeListener;
+  }, [loadNeedLists, editingPlanId]);
 
   const plans = useMemo(() => {
     // MAGAZA_PERSONELI yalnızca kendi oluşturduğu planları görür; ADMIN/MAGAZA_MUDURU tümünü görür.

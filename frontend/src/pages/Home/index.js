@@ -150,8 +150,12 @@ const ROLE_MENU_KEYS = {
     "AdminUserApproval",
     "AdminAuditLog",
   ],
+  /*
+    Özet ekranı yalnızca ADMIN ve MAGAZA_MUDURU'nde vardır: içinde alım
+    tutarları ve kayıp tespitleri gibi yönetim bilgileri bulunur. Personel ve
+    şoför bu bilgileri görmez, onların ekranları kendi işlerine odaklıdır.
+  */
   MAGAZA_PERSONELI: [
-    "Dashboard",
     "NeedListCreate",
     "NeedListList",
     "Acceptance",
@@ -160,7 +164,7 @@ const ROLE_MENU_KEYS = {
     "Fruits",
   ],
   MAGAZA_MUDURU: ["Dashboard", "NeedListList", "PurchaseManagement", "ActiveTasks", "Fruits"],
-  SOFOR: ["Dashboard", "ActiveTasks", "Fruits"],
+  SOFOR: ["ActiveTasks", "Fruits"],
 };
 
 // Kullanıcının rolüne göre görebileceği kart listesini üretir.

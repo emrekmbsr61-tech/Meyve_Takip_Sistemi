@@ -249,7 +249,17 @@ public class NeedListService {
                 AuditActionType.DELIVERY_PLAN_CANCELLED,
                 "DeliveryPlan",
                 planId,
-                canceller.getFullName() + " Plan #" + planId + " iptal etti (" + deletedCount + " ürün kaydı silindi)."
+                canceller.getFullName() + " Plan #" + planId + " iptal etti (" + deletedCount + " ürün kaydı silindi).",
+                planId,
+                AuditStatus.SUCCESS,
+                null
+        );
+
+        // Müdür iptal edilmiş bir plan için alım yapmaya çalışmasın diye haber verilir.
+        notifyPlanManager(
+                planId,
+                "IHTIYAC_IPTAL_EDILDI",
+                "Plan #" + planId + " iptal edildi."
         );
     }
 
@@ -301,7 +311,21 @@ public class NeedListService {
                 AuditActionType.NEED_LIST_UPDATED,
                 "NeedList",
                 updatedNeedList.getId(),
-                userFullName + " ihtiyaç listesini güncelledi. Kayıt ID: " + updatedNeedList.getId()
+                userFullName + " ihtiyaç listesini güncelledi. Kayıt ID: " + updatedNeedList.getId(),
+                updatedNeedList.getPlanId(),
+                AuditStatus.SUCCESS,
+                null
+        );
+
+        // Müdür alım yapmadan önce güncel miktarı görsün diye haber verilir.
+        String fruitName = fruitRepository.findById(updatedNeedList.getFruitId())
+                .map(Fruit::getName)
+                .orElse("Ürün");
+
+        notifyPlanManager(
+                updatedNeedList.getPlanId(),
+                "IHTIYAC_GUNCELLENDI",
+                fruitName + " miktarı güncellendi (Plan #" + updatedNeedList.getPlanId() + ")."
         );
 
         return convertToResponse(updatedNeedList);
@@ -323,6 +347,7 @@ public class NeedListService {
         Long userId = needList.getCreatedBy();
         String userFullName = getUserFullName(userId);
         Long deletedNeedListId = needList.getId();
+        Long planId = needList.getPlanId();
 
         needListRepository.delete(needList);
 
@@ -332,7 +357,16 @@ public class NeedListService {
                 AuditActionType.NEED_LIST_DELETED,
                 "NeedList",
                 deletedNeedListId,
-                userFullName + " ihtiyaç listesini sildi. Kayıt ID: " + deletedNeedListId
+                userFullName + " ihtiyaç listesini sildi. Kayıt ID: " + deletedNeedListId,
+                planId,
+                AuditStatus.SUCCESS,
+                null
+        );
+
+        notifyPlanManager(
+                planId,
+                "IHTIYAC_GUNCELLENDI",
+                "Plandan bir ürün çıkarıldı (Plan #" + planId + ")."
         );
     }
 
@@ -383,6 +417,26 @@ public class NeedListService {
                 updatedByName,
                 updatedDate
         );
+    }
+
+    /*
+      Bir plandaki değişikliği, o planın ALIM görevini üstlenmiş müdüre bildirir.
+
+      Neden gerekli: İhtiyaç planı oluşturulduğunda müdüre bildirim gidiyordu,
+      ama plan SONRADAN güncellenince veya iptal edilince hiçbir haber
+      gitmiyordu. Müdür ekranı açık beklerken miktarlar değişse bile eski
+      veriyi görüyor, hatta yanlış miktar üzerinden alım yapabiliyordu.
+
+      Hedef seçimi: Bildirim, "sistemdeki ilk müdür" yerine bu planın ALIM
+      görevi KİME ATANDIYSA ona gider - doğru kişi odur. Görev bulunamazsa
+      (ör. çok eski bir plan) en küçük id'li müdüre düşülür.
+    */
+    private void notifyPlanManager(Long planId, String type, String message) {
+        taskAssignmentRepository.findByPlanIdAndTaskType(planId, TaskType.ALIM)
+                .map(TaskAssignment::getAssignedUserId)
+                .or(() -> userRepository.findFirstByRoleOrderByIdAsc(UserRole.MAGAZA_MUDURU)
+                        .map(User::getId))
+                .ifPresent(managerId -> notificationService.notifyUser(managerId, type, message));
     }
 
     // Kullanıcı id bilgisinden ad soyad bilgisini bulur.

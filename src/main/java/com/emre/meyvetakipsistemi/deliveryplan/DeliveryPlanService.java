@@ -1,9 +1,10 @@
 package com.emre.meyvetakipsistemi.deliveryplan;
 
+import com.emre.meyvetakipsistemi.deliveryplan.dto.DeliveryPlanResponse;
+import com.emre.meyvetakipsistemi.exception.ResourceNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
 import java.util.List;
 /*
 
@@ -20,29 +21,36 @@ public class DeliveryPlanService {
     @Autowired
     private DeliveryPlanRepository deliveryPlanRepository;
 
-    // Yeni teslimat planı oluşturma.
-    public DeliveryPlan createDeliveryPlan(DeliveryPlan deliveryPlan){
+    /*
+      Planlar yalnızca NeedListService.createNeedListPlan içinden, ürünleriyle
+      birlikte oluşturulur; bu yüzden burada ayrı bir "plan oluştur" metodu yoktur.
+      (Eski createDeliveryPlan metodu ürünsüz/sahipsiz plan yaratabildiği için
+      kaldırıldı - bkz. DeliveryPlanController başındaki açıklama.)
+    */
 
-      if (deliveryPlan.getPlanStatus() == null) {
-          deliveryPlan.setPlanStatus(PlanStatus.CREATED);
-      }
-
-      if (deliveryPlan.getCreatedDate() == null){
-        deliveryPlan.setCreatedDate(LocalDateTime.now());
-      }
-
-      return deliveryPlanRepository.save(deliveryPlan);
-
+    public List<DeliveryPlanResponse> getAllDeliveryPlans() {
+        return deliveryPlanRepository.findAll().stream()
+                .map(this::toResponse)
+                .toList();
     }
 
-    public List<DeliveryPlan> getAllDeliveryPlans(){
-        return deliveryPlanRepository.findAll();
+    public DeliveryPlanResponse getDeliveryPlanById(Long id) {
+        DeliveryPlan plan = deliveryPlanRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Teslimat planı bulunamadı: " + id));
+
+        return toResponse(plan);
     }
 
-    public DeliveryPlan getDeliveryPlanById(Long id) {
-        return deliveryPlanRepository.findById(id)
-                .orElseThrow();
-
+    // Entity'yi dışarı açılabilecek hâle çevirir.
+    private DeliveryPlanResponse toResponse(DeliveryPlan plan) {
+        return new DeliveryPlanResponse(
+                plan.getId(),
+                plan.getStoreId(),
+                plan.getPlanStatus(),
+                plan.getCreatedDate(),
+                plan.getCompletedDate(),
+                plan.getGeneralNotes()
+        );
     }
 
     /*

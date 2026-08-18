@@ -253,13 +253,19 @@ public class ConsistencyCheckService {
                 + (shortage ? " eksik! " : " fazla. ")
                 + reason;
 
+        /*
+          Anahtarlar SABİT tutulur (onceki/sonraki). Önceden anahtar adı Türkçe
+          etiketten türetiliyordu ("İhtiyaç" -> "i̇htiyac" gibi) ve bu, okuyan
+          taraf için tahmin edilemez hale geliyordu. Hangi aşamaların
+          karşılaştırıldığı zaten "asama" alanında yazıyor.
+        */
         String details = "{"
                 + "\"asama\":" + jsonString(stageCode) + ","
                 + "\"fruitId\":" + fruitId + ","
                 + "\"urun\":" + jsonString(fruitName) + ","
                 + "\"birim\":" + jsonString(unit == null ? "BILINMIYOR" : unit.name()) + ","
-                + "\"" + asciiKey(firstLabel) + "\":" + firstValue + ","
-                + "\"" + asciiKey(secondLabel) + "\":" + secondValue + ","
+                + "\"onceki\":" + firstValue + ","
+                + "\"sonraki\":" + secondValue + ","
                 + "\"fark\":" + difference
                 + "}";
 
@@ -290,14 +296,6 @@ public class ConsistencyCheckService {
             case ADET -> "Adet";
             case KASA -> "Kasa";
         };
-    }
-
-    // JSON anahtarlarında Türkçe karakter kullanmamak için sadeleştirir.
-    private String asciiKey(String label) {
-        return label.toLowerCase()
-                .replace("ı", "i").replace("İ", "i")
-                .replace("ç", "c").replace("ş", "s")
-                .replace("ğ", "g").replace("ö", "o").replace("ü", "u");
     }
 
     private String jsonOf(String key, String value) {

@@ -1,5 +1,7 @@
 package com.emre.meyvetakipsistemi.purchase;
 
+import jakarta.validation.Valid;
+
 import com.emre.meyvetakipsistemi.auditlog.AuditActionType;
 import com.emre.meyvetakipsistemi.auditlog.AuditLogService;
 import com.emre.meyvetakipsistemi.auditlog.AuditStatus;
@@ -38,7 +40,7 @@ public class PurchaseController {
 
     // Bir planın tüm ürünleri için alım kaydı oluşturur.
     @PostMapping("/plan")
-    public ResponseEntity<?> createPurchasesForPlan(@RequestBody PurchasePlanRequest request) {
+    public ResponseEntity<?> createPurchasesForPlan(@Valid @RequestBody PurchasePlanRequest request) {
         try {
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(purchaseService.createPurchasesForPlan(request));

@@ -1,5 +1,7 @@
 package com.emre.meyvetakipsistemi.needlist;
 
+import jakarta.validation.Valid;
+
 import com.emre.meyvetakipsistemi.needlist.dto.AddExtraItemsRequest;
 import com.emre.meyvetakipsistemi.needlist.dto.NeedListPlanRequest;
 import com.emre.meyvetakipsistemi.needlist.dto.NeedListRequest;
@@ -37,7 +39,7 @@ public class NeedListController {
       kullanmalıdır.
     */
     @PostMapping("/plan")
-    public ResponseEntity<?> createNeedListPlan(@RequestBody NeedListPlanRequest request) {
+    public ResponseEntity<?> createNeedListPlan(@Valid @RequestBody NeedListPlanRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(needListService.createNeedListPlan(request));
     }
 

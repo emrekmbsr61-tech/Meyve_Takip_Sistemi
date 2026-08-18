@@ -79,11 +79,11 @@ function FruitsScreen() {
 
 /*
   Ana ekrandaki "Özet" kartına basılınca açılır.
-  Hangi kartların (özellikle alım tutarlarının) gösterileceği role göre
-  değiştiği için currentUser gönderilir.
+  Bu karta yalnızca ADMIN ve MAGAZA_MUDURU erişebilir (bkz. Home ROLE_MENU_KEYS),
+  bu yüzden ekran ayrıca kullanıcı bilgisine ihtiyaç duymaz.
 */
-function DashboardScreen({ currentUser }) {
-  return <Dashboard currentUser={currentUser} />;
+function DashboardScreen() {
+  return <Dashboard />;
 }
 
 function AcceptanceScreen(props) {
@@ -318,7 +318,7 @@ export default function App() {
             title: "Özet",
           }}
         >
-          {() => <DashboardScreen currentUser={currentUser} />}
+          {() => <DashboardScreen />}
         </Stack.Screen>
 
         {/*

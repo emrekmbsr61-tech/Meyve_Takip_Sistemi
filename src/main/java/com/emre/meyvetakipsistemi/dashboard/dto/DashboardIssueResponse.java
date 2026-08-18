@@ -1,30 +1,55 @@
 package com.emre.meyvetakipsistemi.dashboard.dto;
 
-import com.emre.meyvetakipsistemi.auditlog.AuditStatus;
+import com.emre.meyvetakipsistemi.fruit.FruitUnit;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 import java.time.LocalDateTime;
 
-// Ana ekranda listelenen tek bir tutarsızlık uyarısını taşır.
+/*
+  TAMAMLANMIŞ bir planın tek bir ürününe ait BÜTÜN hikayeyi (ihtiyaç -> alım ->
+  toplama -> kabul) tek satırda taşır.
+
+  Önceki tasarım: AuditLog'daki her aşama-karşılaştırması (İhtiyaç-Alım,
+  Alım-Toplama, Toplama-Kabul, İhtiyaç-Kabul) ayrı bir "bulgu" olarak
+  gösteriliyordu. Tek bir üründe uçtan uca kayıp varsa bu, aynı ürün için 4
+  farklı karta bölünüyordu ve plan daha bitmeden (Toplama'dan hemen sonra)
+  bile görünüyordu - kullanıcı için anlaşılmaz bir görünümdü.
+
+  Yeni tasarım: yalnızca TAMAMLANMIŞ (mal kabulü bitmiş) planlar taranır ve
+  bir ürünün dört sayısı BİRLİKTE, tek kartta gösterilir (bkz.
+  DashboardService.findRecentIssues ve Dashboard/IssueCard.js). Hangi
+  aşamada kayıp olduğu, kartın kendisinde sayılar arasındaki farktan
+  görsel olarak anlaşılır - ayrıca teknik bir "aşama kodu" göndermeye
+  gerek kalmaz.
+*/
 @Getter
 @AllArgsConstructor
 public class DashboardIssueResponse {
 
     private Long planId;
 
-    // WARNING / ERROR / CRITICAL
-    private AuditStatus status;
+    private String storeName;
 
-    // Kullanıcıya gösterilecek tam açıklama.
-    private String message;
+    private String fruitName;
+
+    private FruitUnit unit;
+
+    private Double requiredQuantity;
+
+    private Double purchasedQuantity;
+
+    private Double collectedQuantity;
+
+    private Double acceptedQuantity;
 
     /*
-      Bulgunun sayısal ayrıntısı (JSON metni): hangi ürün, hangi aşama, kaç
-      birim fark var. Özet ekranı bunu okuyup uyarıyı sade bir başlık halinde
-      gösterir; okunamazsa message alanına düşer (bkz. frontend Dashboard).
+      En az bir aşamada miktar AZALDIYSA true (kayıp şüphesi, kırmızı).
+      Yalnızca fazlalık varsa false (kayıp değil, turuncu) - fazladan
+      sipariş/toplama bir hırsızlık göstergesi değildir.
     */
-    private String details;
+    private boolean lossDetected;
 
-    private LocalDateTime createdAt;
+    // Bu planın mal kabulünün tamamlandığı an; kartta "ne zaman" bilgisi için.
+    private LocalDateTime completedAt;
 }

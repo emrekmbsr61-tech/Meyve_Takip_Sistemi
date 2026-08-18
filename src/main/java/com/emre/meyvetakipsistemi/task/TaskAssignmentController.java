@@ -1,11 +1,18 @@
 package com.emre.meyvetakipsistemi.task;
 
-import org.springframework.http.HttpStatus;
+import com.emre.meyvetakipsistemi.task.dto.TaskAssignmentResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/*
+  Görev okuma ve görev durumu değiştirme isteklerini karşılar.
+
+  Cevaplarda TaskAssignment entity'si değil TaskAssignmentResponse döner
+  (şartname kuralı: entity'ler doğrudan dışarı açılmaz).
+  Hata yönetimi merkezidir (bkz. GlobalExceptionHandler); burada try/catch yoktur.
+*/
 @RestController
 @RequestMapping("/api/tasks")
 @CrossOrigin(origins = "*")
@@ -19,12 +26,12 @@ public class TaskAssignmentController {
 
     // Kullanıcıya atanmış mevcut görevleri döner. Yeni görev OLUŞTURMAZ, yalnızca okur.
     @GetMapping
-    public List<TaskAssignment> getTasks(@RequestParam Long userId) {
+    public List<TaskAssignmentResponse> getTasks(@RequestParam Long userId) {
         return service.getTasks(userId);
     }
 
     @PatchMapping("/{id}/start")
-    public TaskAssignment start(@PathVariable Long id) {
+    public TaskAssignmentResponse start(@PathVariable Long id) {
         return service.start(id);
     }
 

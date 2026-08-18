@@ -1,15 +1,21 @@
 package com.emre.meyvetakipsistemi.fruit;
 
+import com.emre.meyvetakipsistemi.exception.ResourceNotFoundException;
+import com.emre.meyvetakipsistemi.fruit.dto.FruitResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+
 import java.util.List;
 
-/*  meyvelerle ilgili iş mantığını tutacağım
+/*
+  Meyvelerle ilgili iş mantığını tutar.
 
-    createFruit → yeni meyve kaydeder
-    getAllFruits → tüm meyveleri listeler
-    getFruitById → id’ye göre meyve getirir
+    createFruit  -> yeni meyve kaydeder
+    getAllFruits -> tüm meyveleri listeler
+    getFruitById -> id'ye göre meyve getirir
 
+  Dışarıya her zaman FruitResponse döner; Fruit entity'si API cevabında
+  hiçbir zaman doğrudan kullanılmaz.
 */
 @Service
 public class FruitService {
@@ -17,23 +23,37 @@ public class FruitService {
     @Autowired
     private FruitRepository fruitRepository;
 
-    // Yeni meyve kaydı oluşturma
-    public Fruit createFruit(Fruit fruit)
-    {
-        return fruitRepository.save(fruit);
+    // Yeni meyve kaydı oluşturur.
+    public FruitResponse createFruit(Fruit fruit) {
+        return toResponse(fruitRepository.save(fruit));
     }
 
-    //Tüm meyveleri listeleme
-    public List<Fruit> getAllFruits()
-    {
-        return fruitRepository.findAll();
+    // Tüm meyveleri listeler.
+    public List<FruitResponse> getAllFruits() {
+        return fruitRepository.findAll().stream()
+                .map(this::toResponse)
+                .toList();
     }
 
-    //Id değerine göre tek bir meyve getirme
-    public Fruit getFruitById(Long id)
-    {
-        return fruitRepository.findById(id)
-                .orElseThrow();
+    // Id değerine göre tek bir meyve getirir.
+    public FruitResponse getFruitById(Long id) {
+        Fruit fruit = fruitRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Ürün bulunamadı: " + id));
+
+        return toResponse(fruit);
     }
 
+    // Entity'yi dışarı açılabilecek güvenli hâle çevirir.
+    private FruitResponse toResponse(Fruit fruit) {
+        return new FruitResponse(
+                fruit.getId(),
+                fruit.getName(),
+                fruit.getCode(),
+                fruit.getUnit(),
+                fruit.getImagePath(),
+                fruit.getIsActive(),
+                fruit.getIsPerishable(),
+                fruit.getProfitMarginPercent()
+        );
+    }
 }

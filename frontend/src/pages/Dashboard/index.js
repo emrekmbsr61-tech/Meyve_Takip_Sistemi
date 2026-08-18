@@ -28,10 +28,13 @@ const colors = {
   Verinin tamamı tek bir istekle backend'den gelir (GET /api/dashboard);
   bu ekran hiçbir sayıyı kendisi hesaplamaz veya uydurmaz.
 
-  Rol kuralı: alım tutarları (TL) yalnızca ADMIN ve MAGAZA_MUDURU'ne gösterilir.
-  ŞOFÖR fiyat bilgisi göremez - bu projenin temel denetim kuralıdır.
+  Erişim: Bu ekrana yalnızca ADMIN ve MAGAZA_MUDURU girebilir; ana ekrandaki
+  "Özet" kartı diğer rollere hiç gösterilmez (bkz. Home/index.js
+  ROLE_MENU_KEYS). Bu yüzden ekranın içinde ayrıca rol kontrolü yapılmaz -
+  içerideki alım tutarlarını görmesi sakıncalı olan roller buraya zaten
+  ulaşamaz.
 */
-export default function Dashboard({ currentUser }) {
+export default function Dashboard() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
@@ -52,10 +55,6 @@ export default function Dashboard({ currentUser }) {
       loadDashboard();
     }, [loadDashboard])
   );
-
-  const role = currentUser?.role;
-  const canSeePrices = role === "ADMIN" || role === "MAGAZA_MUDURU";
-  const canSeeIssues = role === "ADMIN" || role === "MAGAZA_MUDURU";
 
   if (loading) {
     return (
@@ -163,47 +162,49 @@ export default function Dashboard({ currentUser }) {
         />
       </View>
 
-      {/* Alım tutarları - yalnızca fiyat görmeye yetkili roller */}
-      {canSeePrices ? (
+      {/* Alım tutarları */}
+      <Text style={styles.sectionTitle}>Alım Tutarları</Text>
+
+      <View style={styles.moneyCard}>
+        <View style={styles.moneyRow}>
+          <Text style={styles.moneyLabel}>Bugün</Text>
+          <Text style={styles.moneyValue}>{formatMoney(data.todayPurchaseTotal)}</Text>
+        </View>
+
+        <View style={styles.moneyDivider} />
+
+        <View style={styles.moneyRow}>
+          <Text style={styles.moneyLabel}>Son 7 gün</Text>
+          <Text style={styles.moneyValue}>
+            {formatMoney(data.lastSevenDaysPurchaseTotal)}
+          </Text>
+        </View>
+      </View>
+
+      {/*
+        Bu bölüm yalnızca TAMAMLANMIŞ planları (mal kabulü bitmiş) tarar.
+        Devam eden bir plan burada hiç görünmez - süreç bitmeden gösterilen
+        ara bulgular kafa karıştırıyordu, artık yalnızca son hâli gösterilir.
+      */}
+      <Text style={styles.sectionTitle}>Miktar Farkları</Text>
+
+      {issues.length === 0 ? (
+        <View style={styles.emptyCard}>
+          <Ionicons name="shield-checkmark-outline" size={34} color={colors.green} />
+          <Text style={styles.emptyTitle}>Fark yok</Text>
+          <Text style={styles.emptyText}>Tamamlanan planlarda miktar farkı bulunamadı.</Text>
+        </View>
+      ) : (
         <>
-          <Text style={styles.sectionTitle}>Alım Tutarları</Text>
+          <Text style={styles.sectionHint}>
+            Tamamlanan planlarda tespit edilen farklar (en yeniden eskiye).
+          </Text>
 
-          <View style={styles.moneyCard}>
-            <View style={styles.moneyRow}>
-              <Text style={styles.moneyLabel}>Bugün</Text>
-              <Text style={styles.moneyValue}>{formatMoney(data.todayPurchaseTotal)}</Text>
-            </View>
-
-            <View style={styles.moneyDivider} />
-
-            <View style={styles.moneyRow}>
-              <Text style={styles.moneyLabel}>Son 7 gün</Text>
-              <Text style={styles.moneyValue}>
-                {formatMoney(data.lastSevenDaysPurchaseTotal)}
-              </Text>
-            </View>
-          </View>
+          {issues.map((issue, index) => (
+            <IssueCard key={index} issue={issue} />
+          ))}
         </>
-      ) : null}
-
-      {/* Tespit edilen kayıp/fark uyarıları */}
-      {canSeeIssues ? (
-        <>
-          <Text style={styles.sectionTitle}>Son Tespitler</Text>
-
-          {issues.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <Ionicons name="shield-checkmark-outline" size={34} color={colors.green} />
-              <Text style={styles.emptyTitle}>Tespit yok</Text>
-              <Text style={styles.emptyText}>
-                Miktarlar tüm aşamalarda tutuyor.
-              </Text>
-            </View>
-          ) : (
-            issues.map((issue, index) => <IssueCard key={index} issue={issue} />)
-          )}
-        </>
-      ) : null}
+      )}
     </ScrollView>
   );
 }
@@ -268,6 +269,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     marginTop: 4,
   },
+  sectionHint: { color: colors.gray, fontSize: 12, marginBottom: 10, lineHeight: 17 },
 
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 20 },
   statCard: {

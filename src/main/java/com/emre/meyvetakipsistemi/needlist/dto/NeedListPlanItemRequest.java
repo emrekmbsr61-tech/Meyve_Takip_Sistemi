@@ -1,5 +1,9 @@
 package com.emre.meyvetakipsistemi.needlist.dto;
 
+import jakarta.validation.constraints.Positive;
+
+import jakarta.validation.constraints.NotNull;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -8,8 +12,11 @@ import lombok.Setter;
 @Setter
 public class NeedListPlanItemRequest {
 
+    @NotNull(message = "Ürün seçilmelidir")
     private Long fruitId;
 
+    @NotNull(message = "Geçerli bir miktar girilmelidir")
+    @Positive(message = "Miktar sıfırdan büyük olmalıdır")
     private Double requiredQuantity;
 
     private String notes;

@@ -223,11 +223,23 @@ public class AcceptanceService {
                         + request.getItems().size() + " ürünlük mal kabul kaydetti."
         );
 
+        /*
+          Planın son adımı burada biter, bu yüzden bildirim yalnızca işlemi
+          yapan personele değil, sürecin tamamıyla ilgilenen herkese gider:
+            - Personelin kendisine (kaydın başarıyla alındığını görsün)
+            - Bu planın alımını yapan müdüre (kendi aldığı ürünlerin akıbeti)
+            - Tüm ADMIN'lere (genel gözetim)
+          Önceden yalnızca personelin kendisine gidiyordu - zaten ekrana
+          bakan kişiye kendi işlemini haber vermek anlamsızdı, oysa süreci
+          asıl takip etmesi gereken müdür ve admin hiç haberdar olmuyordu.
+        */
         notificationService.notifyUser(
                 receiver.getId(),
                 "KABUL_TAMAMLANDI",
                 "Mal kabul tamamlandı (Plan #" + request.getPlanId() + ")."
         );
+
+        notifyPlanManagerAndAdmins(request.getPlanId(), receiver.getFullName());
 
         /*
           Planın son aşaması tamamlandı: dört karşılaştırmanın tamamı burada
@@ -336,6 +348,28 @@ public class AcceptanceService {
         }
 
         return result;
+    }
+
+    /*
+      Mal kabul tamamlandığında, bu planın alımını yapan müdüre ve tüm
+      ADMIN'lere bildirim gönderir.
+
+      Müdür seçimi: "sistemdeki ilk müdür" değil, bu planın ALIM görevi kime
+      atandıysa o kişi (NeedListService.notifyPlanManager ile aynı desen).
+      Görev bulunamazsa (çok eski/legacy bir plan) sessizce atlanır - burada
+      "en küçük id'li müdüre düş" mantığı bilinçli olarak kullanılmaz, çünkü
+      bu bildirim geçmişte kesin OLARAK BİR müdüre atanmış olmayı gerektirir.
+    */
+    private void notifyPlanManagerAndAdmins(Long planId, String receivedByName) {
+        String message = receivedByName + " Plan #" + planId + " için mal kabulü tamamladı.";
+
+        taskAssignmentRepository.findByPlanIdAndTaskType(planId, TaskType.ALIM)
+                .map(TaskAssignment::getAssignedUserId)
+                .ifPresent(managerId -> notificationService.notifyUser(managerId, "KABUL_TAMAMLANDI", message));
+
+        for (User admin : userRepository.findByRole(UserRole.ADMIN)) {
+            notificationService.notifyUser(admin.getId(), "KABUL_TAMAMLANDI", message);
+        }
     }
 
     // Çağıranın var olan ve MAGAZA_PERSONELI rolünde bir kullanıcı olduğunu doğrular.

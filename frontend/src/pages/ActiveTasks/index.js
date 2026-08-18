@@ -178,18 +178,30 @@ function MalKabulActiveTasks({
   );
 
   /*
-    Gerçek zamanlı güncelleme: backend'de yeni bir KABUL görevi atandığında
-    (TaskAssignmentService.assignKabulIfNeeded -> NotificationService),
-    ekran açıkken bile elle yenilemeye gerek kalmadan liste güncellenir.
+    Gerçek zamanlı güncelleme: kullanıcıya YENİ bir görev atandığında veya var
+    olan bir görevin süresi geçtiğinde, ekran açıkken bile elle yenilemeye
+    gerek kalmadan liste tazelenir.
+
+    Not: Önceden yalnızca KABUL görevi dinleniyordu; bu yüzden şoföre atanan
+    toplama/teslimat görevleri ve gecikme uyarıları ekranda anında görünmüyordu.
   */
+  const TASK_NOTIFICATION_TYPES = [
+    "ALIM_GOREVI_ATANDI",
+    "TOPLAMA_GOREVI_ATANDI",
+    "TESLIMAT_GOREVI_ATANDI",
+    "KABUL_GOREVI_ATANDI",
+    "GOREV_SURESI_ASILDI",
+  ];
+
   useEffect(() => {
     const unsubscribe = addNotificationListener((notification) => {
-      if (notification.type === "KABUL_GOREVI_ATANDI") {
+      if (TASK_NOTIFICATION_TYPES.includes(notification?.type)) {
         loadTasks();
       }
     });
 
     return unsubscribe;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadTasks]);
 
   // Göreve basılınca doğrudan o planın Mal Kabul ekranı açılır.

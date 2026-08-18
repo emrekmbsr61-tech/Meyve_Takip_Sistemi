@@ -10,156 +10,125 @@ const colors = {
   redLight: "#FDECEC",
   orange: "#C96800",
   orangeLight: "#FFF1DC",
-  blue: "#2563EB",
-  blueLight: "#E8F0FE",
 };
 
 /*
-  Tespit edilen tek bir miktar farkını okunabilir bir kart olarak gösterir.
+  TAMAMLANMIŞ bir plandaki tek bir ürünün BÜTÜN hikayesini tek kartta,
+  akıcı bir şekilde gösterir: İhtiyaç -> Alım -> Toplama -> Kabul.
 
-  Backend uzun bir cümle gönderir, örn:
-    "Plan #31 - Armut Deveci: Toplama 90 Kilo, Kabul 88 Kilo. 2 Kilo eksik!
-     HIRSIZLIK/KAYIP ŞÜPHESİ: Taşıma sırasında miktar değişmiş."
+  Backend artık ham JSON değil, dört düz sayı gönderiyor (requiredQuantity,
+  purchasedQuantity, collectedQuantity, acceptedQuantity); bu sayede burada
+  hiçbir metin ayrıştırma yapılmaz, kart doğrudan bu sayılardan üretilir.
 
-  Bu kart onu üçe böler:
-    Başlık   -> "Armut Deveci · 2 Kilo eksik"
-    Açıklama -> "Taşıma sırasında kayıp"
-    Alt bilgi-> "Plan #31 · 10 dakika önce"
-
-  Sayısal veriyi backend'in gönderdiği details (JSON) alanından okur; okunamazsa
-  ham mesaja geri döner, böylece ekran hiçbir durumda boş kalmaz.
+  Tasarım fikri: dört sayıyı bir "akış" (ok ok ok) olarak yan yana göster;
+  sayı DÜŞTÜĞÜ yerdeki ok kırmızı/turuncu olur ve üzerinde "-2" gibi bir
+  etiket çıkar. Böylece kaybın TAM OLARAK hangi aşamada olduğu bir bakışta,
+  cümle okumaya gerek kalmadan görülür.
 */
-
-// Önem derecesine göre görsel ayarlar.
-const SEVERITY = {
-  CRITICAL: { label: "KAYIP ŞÜPHESİ", icon: "alert-circle", color: colors.red, background: colors.redLight },
-  ERROR: { label: "İHTİYAÇ KARŞILANMADI", icon: "close-circle", color: colors.red, background: colors.redLight },
-  WARNING: { label: "UYARI", icon: "warning", color: colors.orange, background: colors.orangeLight },
-  SUCCESS: { label: "BİLGİ", icon: "information-circle", color: colors.blue, background: colors.blueLight },
-};
-
-/*
-  Hangi aşamada tespit edildiğini sade Türkçeye çevirir.
-
-  Yön önemlidir: eksik çıkması kayıp/hırsızlık şüphesidir, fazla çıkması ise
-  kayıp değildir (fazla alınmış/fazla gelmiştir). Bu yüzden her aşama için
-  iki ayrı metin tutulur - aksi halde "2 kilo fazla" için de "kayıp" yazardı.
-*/
-const STAGE_LABELS = {
-  "IHTIYAC-ALIM": { eksik: "İhtiyaçtan az sipariş edilmiş", fazla: "İhtiyaçtan fazla sipariş edilmiş" },
-  "ALIM-TOPLAMA": { eksik: "Halde kayıp", fazla: "Halde fazla yüklenmiş" },
-  "TOPLAMA-KABUL": { eksik: "Taşımada kayıp", fazla: "Mağazada fazla sayılmış" },
-  "IHTIYAC-KABUL": { eksik: "Mağazaya eksik ulaştı", fazla: "Mağazaya fazla ulaştı" },
-};
-
-// Aşama ve farkın yönüne göre açıklama metnini seçer.
-function stageReason(asama, fark) {
-  const labels = STAGE_LABELS[asama];
-
-  if (!labels) {
-    return "Miktar farkı";
-  }
-
-  return Number(fark) < 0 ? labels.eksik : labels.fazla;
-}
-
 export default function IssueCard({ issue }) {
-  const severity = SEVERITY[issue.status] || SEVERITY.WARNING;
-  const detail = parseDetails(issue.details);
+  const renk = issue.lossDetected ? colors.red : colors.orange;
+  const arkaPlan = issue.lossDetected ? colors.redLight : colors.orangeLight;
+  const etiket = issue.lossDetected ? "KAYIP ŞÜPHESİ" : "FAZLALIK VAR";
 
-  const title = detail
-    ? `${detail.urun} · ${formatDifference(detail.fark, detail.birim)}`
-    : kisalt(issue.message);
+  const adimlar = [
+    { kisaEtiket: "İhtiyaç", deger: issue.requiredQuantity },
+    { kisaEtiket: "Alım", deger: issue.purchasedQuantity },
+    { kisaEtiket: "Toplama", deger: issue.collectedQuantity },
+    { kisaEtiket: "Kabul", deger: issue.acceptedQuantity },
+  ].filter((adim) => adim.deger !== null && adim.deger !== undefined);
 
-  const reason = detail ? stageReason(detail.asama, detail.fark) : null;
+  const birim = unitLabel(issue.unit);
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, { borderLeftColor: renk }]}>
       <View style={styles.header}>
-        <View style={[styles.iconBox, { backgroundColor: severity.background }]}>
-          <Ionicons name={severity.icon} size={18} color={severity.color} />
+        <View style={[styles.iconBox, { backgroundColor: arkaPlan }]}>
+          <Ionicons name="git-compare-outline" size={17} color={renk} />
         </View>
 
         <View style={styles.headerText}>
-          <Text style={[styles.severityLabel, { color: severity.color }]}>
-            {severity.label}
-          </Text>
-          <Text style={styles.title}>{title}</Text>
+          <Text style={[styles.etiket, { color: renk }]}>{etiket}</Text>
+          <Text style={styles.baslik}>{issue.fruitName}</Text>
         </View>
       </View>
 
-      {reason ? <Text style={styles.reason}>{reason}</Text> : null}
+      {/* Akış: İhtiyaç -> Alım -> Toplama -> Kabul, düşen yer renklenir */}
+      <View style={styles.akis}>
+        {adimlar.map((adim, index) => {
+          const oncekiAdim = adimlar[index - 1];
+          const fark = oncekiAdim ? adim.deger - oncekiAdim.deger : 0;
+          const okRengi = fark < 0 ? colors.red : fark > 0 ? colors.orange : colors.gray;
+
+          return (
+            <View key={adim.kisaEtiket} style={styles.adimGrubu}>
+              {index > 0 ? (
+                <View style={styles.okAlani}>
+                  <Ionicons name="arrow-forward" size={14} color={okRengi} />
+                  {fark !== 0 ? (
+                    <Text style={[styles.farkEtiketi, { color: okRengi }]}>
+                      {fark < 0 ? "" : "+"}
+                      {miktar(fark)}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
+
+              <View style={styles.adim}>
+                <Text style={styles.adimDeger}>{miktar(adim.deger)}</Text>
+                <Text style={styles.adimEtiket}>{adim.kisaEtiket}</Text>
+              </View>
+            </View>
+          );
+        })}
+      </View>
+
+      <Text style={styles.birimText}>{birim}</Text>
 
       <Text style={styles.meta}>
-        {issue.planId ? `Plan #${issue.planId}` : "Plan bilgisi yok"}
+        {issue.storeName ? `${issue.storeName} · ` : ""}
+        {issue.planId ? `Plan #${issue.planId}` : ""}
         {" · "}
-        {formatRelativeTime(issue.createdAt)}
+        {gecenSure(issue.completedAt)}
       </Text>
     </View>
   );
 }
 
-/*
-  details alanı backend'de bizim ürettiğimiz bir JSON metnidir, örn:
-  {"asama":"ALIM-TOPLAMA","urun":"Armut Deveci","birim":"KG","fark":-5}
-  Bozuk/boş gelirse null döner ve kart ham mesaja geri döner.
-*/
-function parseDetails(details) {
-  if (!details) return null;
-
-  try {
-    const parsed = JSON.parse(details);
-    return parsed && parsed.urun ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-// -5 -> "5 Kilo eksik", +2 -> "2 Kilo fazla"
-function formatDifference(fark, birim) {
-  const amount = Math.abs(Number(fark) || 0);
-  const rounded = Number.isInteger(amount) ? amount : amount.toFixed(1);
-
-  return `${rounded} ${unitLabel(birim)} ${Number(fark) < 0 ? "eksik" : "fazla"}`;
+// 2.0 -> "2", 0.5 -> "0,5" (Türkçe ondalık ayracı)
+function miktar(value) {
+  const sayi = Number(value) || 0;
+  return Number.isInteger(sayi) ? String(sayi) : String(sayi).replace(".", ",");
 }
 
 function unitLabel(birim) {
   switch (birim) {
     case "KG":
-      return "Kilo";
+      return "kilo";
     case "ADET":
-      return "Adet";
+      return "adet";
     case "KASA":
-      return "Kasa";
+      return "kasa";
     default:
       return "birim";
   }
 }
 
-// Uzun mesajı ilk cümlesiyle sınırlar (details okunamadığında kullanılır).
-function kisalt(message) {
-  if (!message) return "Miktar farkı tespit edildi";
-
-  const firstSentence = String(message).split(". ")[0];
-  return firstSentence.length > 70 ? `${firstSentence.slice(0, 70)}...` : firstSentence;
-}
-
-// "10 dakika önce", "2 saat önce", "3 gün önce"
-function formatRelativeTime(value) {
+// "az önce", "10 dakika önce", "2 saat önce", "3 gün önce"
+function gecenSure(value) {
   if (!value) return "";
 
-  const diffMs = Date.now() - new Date(value).getTime();
+  const farkMs = Date.now() - new Date(value).getTime();
 
-  if (Number.isNaN(diffMs)) return "";
-  if (diffMs < 60 * 1000) return "az önce";
+  if (Number.isNaN(farkMs)) return "";
+  if (farkMs < 60 * 1000) return "az önce";
 
-  const minutes = Math.floor(diffMs / (60 * 1000));
-  if (minutes < 60) return `${minutes} dakika önce`;
+  const dakika = Math.floor(farkMs / (60 * 1000));
+  if (dakika < 60) return `${dakika} dakika önce`;
 
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} saat önce`;
+  const saat = Math.floor(dakika / 60);
+  if (saat < 24) return `${saat} saat önce`;
 
-  return `${Math.floor(hours / 24)} gün önce`;
+  return `${Math.floor(saat / 24)} gün önce`;
 }
 
 const styles = StyleSheet.create({
@@ -167,21 +136,35 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 16,
+    borderLeftWidth: 4,
+    borderRadius: 14,
     padding: 14,
     marginBottom: 10,
   },
-  header: { flexDirection: "row", alignItems: "center", gap: 11 },
+  header: { flexDirection: "row", alignItems: "center", gap: 11, marginBottom: 12 },
   iconBox: {
-    width: 34,
-    height: 34,
-    borderRadius: 11,
+    width: 32,
+    height: 32,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
   },
   headerText: { flex: 1 },
-  severityLabel: { fontSize: 10, fontWeight: "800", letterSpacing: 0.4 },
-  title: { color: colors.text, fontSize: 15, fontWeight: "700", marginTop: 2 },
-  reason: { color: colors.gray, fontSize: 13, marginTop: 9, marginLeft: 45 },
-  meta: { color: colors.gray, fontSize: 11, marginTop: 8, marginLeft: 45 },
+  etiket: { fontSize: 10, fontWeight: "800", letterSpacing: 0.4 },
+  baslik: { color: colors.text, fontSize: 15, fontWeight: "700", marginTop: 2 },
+
+  akis: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    flexWrap: "wrap",
+  },
+  adimGrubu: { flexDirection: "row", alignItems: "flex-end" },
+  adim: { alignItems: "center", minWidth: 44 },
+  adimDeger: { color: colors.text, fontSize: 16, fontWeight: "800" },
+  adimEtiket: { color: colors.gray, fontSize: 10, marginTop: 2 },
+  okAlani: { alignItems: "center", justifyContent: "flex-end", width: 34, marginBottom: 5 },
+  farkEtiketi: { fontSize: 10, fontWeight: "800", marginTop: 1 },
+
+  birimText: { color: colors.gray, fontSize: 11, marginTop: 2 },
+  meta: { color: colors.gray, fontSize: 11, marginTop: 9 },
 });

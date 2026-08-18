@@ -5,6 +5,7 @@ import com.emre.meyvetakipsistemi.auditlog.AuditLogService;
 import com.emre.meyvetakipsistemi.auth.CurrentUserService;
 import com.emre.meyvetakipsistemi.exception.ResourceNotFoundException;
 import com.emre.meyvetakipsistemi.needlist.NeedList;
+import com.emre.meyvetakipsistemi.task.dto.TaskAssignmentResponse;
 import com.emre.meyvetakipsistemi.needlist.NeedListRepository;
 import com.emre.meyvetakipsistemi.notification.NotificationService;
 import com.emre.meyvetakipsistemi.user.User;
@@ -61,8 +62,23 @@ public class TaskAssignmentService {
     }
 
     // Bu metodun görevi: Kullanıcıya atanmış mevcut görevleri okumak. Yeni görev oluşturmaz.
-    public List<TaskAssignment> getTasks(Long userId) {
-        return taskRepository.findByAssignedUserIdOrderByDueDateAsc(userId);
+    public List<TaskAssignmentResponse> getTasks(Long userId) {
+        return taskRepository.findByAssignedUserIdOrderByDueDateAsc(userId).stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    // Entity'yi dışarı açılabilecek hâle çevirir (entity'ler API'de doğrudan kullanılmaz).
+    private TaskAssignmentResponse toResponse(TaskAssignment task) {
+        return new TaskAssignmentResponse(
+                task.getId(),
+                task.getPlanId(),
+                task.getAssignedUserId(),
+                task.getAssignedAt(),
+                task.getDueDate(),
+                task.getTaskType(),
+                task.getStatus()
+        );
     }
 
     /*
@@ -72,7 +88,7 @@ public class TaskAssignmentService {
       tarafından başlatılabilir. Kimlik doğrulanmış token'dan okunur; böylece
       kardeş metot completeDelivery ile aynı güvenlik seviyesine gelir.
     */
-    public TaskAssignment start(Long id) {
+    public TaskAssignmentResponse start(Long id) {
         TaskAssignment task = taskRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Görev bulunamadı."));
 
@@ -82,7 +98,7 @@ public class TaskAssignmentService {
         );
 
         task.setStatus(TaskStatus.IN_PROGRESS);
-        return taskRepository.save(task);
+        return toResponse(taskRepository.save(task));
     }
 
     /*
@@ -96,7 +112,7 @@ public class TaskAssignmentService {
          NE ZAMAN oluşturulacağı (artık TESLİMAT tamamlanınca) değişti.
     */
     @Transactional
-    public TaskAssignment completeDelivery(Long taskId, Long driverId) {
+    public TaskAssignmentResponse completeDelivery(Long taskId, Long driverId) {
         User driver = requireDriver(driverId);
         TaskAssignment teslimatTask = requireOwnTask(taskId, driver, TaskType.TESLIMAT);
 
@@ -118,7 +134,7 @@ public class TaskAssignmentService {
 
         assignKabulIfNeeded(savedTeslimatTask.getPlanId(), driver);
 
-        return savedTeslimatTask;
+        return toResponse(savedTeslimatTask);
     }
 
     /*
