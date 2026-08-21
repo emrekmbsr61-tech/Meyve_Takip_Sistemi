@@ -55,3 +55,24 @@ ALTER TABLE task_assignments ADD CONSTRAINT task_assignments_status_check CHECK 
     'COMPLETED',
     'OVERDUE'
 ));
+
+-- ----------------------------------------------------------------------------
+--  TaskType enum'una GENEL eklendi (müdürün personele elle atadığı, bir ihtiyaç
+--  planına bağlı OLMAYAN serbest görev - örn. "Depo temizliği").
+--
+--  Yukarıdakilerle BİREBİR aynı sebep: tablo ilk oluşturulurken üretilen CHECK
+--  kısıtı yalnızca o günkü dört değeri tanıyordu, bu yüzden yeni tür görev
+--  kaydedilemiyor ve şu hata alınıyordu:
+--    new row for relation "task_assignments" violates check constraint
+--    "task_assignments_task_type_check"
+-- ----------------------------------------------------------------------------
+
+ALTER TABLE task_assignments DROP CONSTRAINT IF EXISTS task_assignments_task_type_check;
+
+ALTER TABLE task_assignments ADD CONSTRAINT task_assignments_task_type_check CHECK (task_type IN (
+    'ACCEPTANCE',
+    'ALIM',
+    'TOPLAMA',
+    'TESLIMAT',
+    'GENEL'
+));

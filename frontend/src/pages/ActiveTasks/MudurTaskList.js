@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -10,8 +10,10 @@ import {
 import { useFocusEffect } from "@react-navigation/native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
-import { getTasks } from "../../services/taskService";
+import { createManualTask, getTasks } from "../../services/taskService";
+import { addNotificationListener } from "../../services/websocketService";
 import CountdownText from "../../components/CountdownText";
+import AssignTaskModal from "./AssignTaskModal";
 
 const colors = {
   green: "#2E7D32",
@@ -46,6 +48,12 @@ export default function MudurTaskList({ currentUser, navigation }) {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
+  // Görev atama penceresinin durumu.
+  const [assignVisible, setAssignVisible] = useState(false);
+  const [assignSaving, setAssignSaving] = useState(false);
+  const [assignError, setAssignError] = useState("");
+  const [assignSuccess, setAssignSuccess] = useState("");
+
   const loadTasks = useCallback(async () => {
     try {
       setLoading(true);
@@ -71,6 +79,41 @@ export default function MudurTaskList({ currentUser, navigation }) {
       loadTasks();
     }, [loadTasks])
   );
+
+  /*
+    Atadığı görevi personel tamamlayınca müdür ekranda anında haberdar olur;
+    ekranı elle yenilemesi gerekmez (bkz. TaskAssignmentService.completeManualTask).
+  */
+  useEffect(() => {
+    const removeListener = addNotificationListener((notification) => {
+      if (notification?.type === "GOREV_TAMAMLANDI") {
+        setAssignSuccess(notification.message || "Atadığınız görev tamamlandı.");
+      }
+    });
+
+    return removeListener;
+  }, []);
+
+  /*
+    Görevi backend'e gönderir. Başarılıysa pencere kapanır ve ekranda kısa bir
+    onay mesajı gösterilir. Görev karşı tarafa anında WebSocket ile düşer
+    (bkz. TaskAssignmentService.createManualTask -> notifyUser).
+  */
+  const handleAssign = async (payload) => {
+    try {
+      setAssignSaving(true);
+      setAssignError("");
+
+      await createManualTask({ managerId: currentUser.id, ...payload });
+
+      setAssignVisible(false);
+      setAssignSuccess(`"${payload.title}" görevi atandı.`);
+    } catch (error) {
+      setAssignError(error.message || "Görev atanamadı.");
+    } finally {
+      setAssignSaving(false);
+    }
+  };
 
   return (
     <ScrollView
@@ -137,6 +180,47 @@ export default function MudurTaskList({ currentUser, navigation }) {
             </View>
           </Pressable>
         ))}
+
+      {/*
+        ALT BÖLÜM: Görev atama.
+        Üstteki liste müdürün KENDİ görevleridir; burası ise müdürün BAŞKASINA
+        görev vermesi içindir. İkisi görsel olarak ayrılsın diye araya çizgi
+        ve ayrı bir başlık konur.
+      */}
+      <View style={styles.sectionDivider} />
+
+      <Text style={styles.sectionTitle}>Personele Görev Ata</Text>
+      <Text style={styles.sectionDescription}>
+        Mağaza personeline veya şoföre, plandan bağımsız bir görev verebilirsiniz.
+      </Text>
+
+      {assignSuccess ? (
+        <View style={styles.successBox}>
+          <Ionicons name="checkmark-circle-outline" size={18} color={colors.green} />
+          <Text style={styles.successText}>{assignSuccess}</Text>
+        </View>
+      ) : null}
+
+      <Pressable
+        style={styles.assignButton}
+        onPress={() => {
+          setAssignError("");
+          setAssignSuccess("");
+          setAssignVisible(true);
+        }}
+      >
+        <Ionicons name="add-circle-outline" size={20} color={colors.green} />
+        <Text style={styles.assignButtonText}>Yeni Görev Ata</Text>
+      </Pressable>
+
+      <AssignTaskModal
+        visible={assignVisible}
+        managerId={currentUser.id}
+        saving={assignSaving}
+        errorMessage={assignError}
+        onSave={handleAssign}
+        onClose={() => setAssignVisible(false)}
+      />
     </ScrollView>
   );
 }
@@ -210,4 +294,29 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   remainingText: { color: colors.muted, fontWeight: "600", fontSize: 13 },
+  sectionDivider: { height: 1, backgroundColor: colors.border, marginTop: 22, marginBottom: 18 },
+  sectionTitle: { color: colors.text, fontSize: 17, fontWeight: "800" },
+  sectionDescription: { color: colors.muted, fontSize: 13, lineHeight: 19, marginTop: 4, marginBottom: 12 },
+  successBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: colors.greenLight,
+    borderRadius: 12,
+    padding: 11,
+    marginBottom: 10,
+  },
+  successText: { flex: 1, color: colors.green, fontSize: 13, fontWeight: "700" },
+  assignButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: colors.green,
+    borderRadius: 14,
+    paddingVertical: 14,
+  },
+  assignButtonText: { color: colors.green, fontWeight: "800", fontSize: 15 },
 });

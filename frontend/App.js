@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { View, Text, Pressable, ActivityIndicator } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 // Uygulama açılışında kayıtlı oturumu (token + kullanıcı) geri yüklemek için.
@@ -37,6 +37,7 @@ import AdminUserApproval from "./src/pages/AdminUserApproval";
 import PurchaseManagement from "./src/pages/PurchaseManagement";
 import AdminAuditLog from "./src/pages/AdminAuditLog";
 import CompletedAcceptances from "./src/pages/CompletedAcceptances";
+import PlanProgress from "./src/pages/PlanProgress";
 
 
 // Uygulamadaki ekranları bir yığın şeklinde yönetir.
@@ -133,10 +134,31 @@ function CompletedAcceptancesScreen({ currentUser }) {
 }
 
 /*
+  Uygulamanın en dış katmanı.
+
+  SafeAreaProvider, ekranın "güvenli alanını" (üstte çentik/durum çubuğu, altta
+  gezinme çubuğu) ölçüp altındaki tüm bileşenlere bildirir. react-native-safe-area-context
+  içindeki SafeAreaView'i kullanan HER ekranın üstünde bu sağlayıcı bulunmak
+  zorundadır.
+
+  Neden sonradan eklendi: Home ekranı navigasyonun içinde olduğu için
+  react-navigation kendi sağlayıcısını veriyordu ve sorun görünmüyordu. Ama
+  Login/Register ekranları ve aşağıdaki bildirim kutusu navigasyonun DIŞINDA
+  render ediliyor - onlar bu sağlayıcıdan yoksundu.
+*/
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AppContent />
+    </SafeAreaProvider>
+  );
+}
+
+/*
   Uygulamamızın ana kapısı burasıdır.
   Kullanıcı giriş yaptı mı diye burada kontrol ediyoruz.
 */
-export default function App() {
+function AppContent() {
   /*
     currentUser = giriş yapan kullanıcı bilgisi.
     Başlangıçta null çünkü henüz giriş yapan kullanıcı yok.
@@ -441,8 +463,22 @@ export default function App() {
         </Stack.Screen>
 
         {/*
+          Ana ekrandaki "Devam Eden İşlemler" kartına basılınca açılır.
+          Tamamlanmamış planların şu an hangi aşamada beklediğini gösterir.
+          Bu kart yalnızca ADMIN ve MAGAZA_MUDURU rollerine gösterilir.
+        */}
+        <Stack.Screen
+          name="PlanProgress"
+          options={{
+            title: "Devam Eden İşlemler",
+          }}
+        >
+          {() => <PlanProgress currentUser={currentUser} />}
+        </Stack.Screen>
+
+        {/*
           Ana ekrandaki "Tamamlanan İşlemler" kartına basılınca açılır.
-          Bu kart Home ekranında MAGAZA_PERSONELI ve ADMIN rollerine gösterilir.
+          Bu kart Home ekranında ADMIN ve MAGAZA_MUDURU rollerine gösterilir.
         */}
         <Stack.Screen
           name="CompletedAcceptances"

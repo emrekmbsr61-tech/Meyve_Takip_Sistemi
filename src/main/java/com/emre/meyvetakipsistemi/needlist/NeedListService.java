@@ -77,39 +77,6 @@ public class NeedListService {
     }
 
     /*
-      ESKİ (tekil) ihtiyaç kaydı oluşturma. Hâlâ çalışır durumda bırakıldı fakat
-      artık kullanılmamalı: planId'yi client'tan olduğu gibi kabul ediyor ve
-      DeliveryPlan oluşturmuyor. Yeni akış için bkz. createNeedListPlan.
-    */
-    public NeedListResponse createNeedList(NeedListRequest request) {
-
-        NeedList needList = new NeedList();
-
-        needList.setPlanId(request.getPlanId());
-        needList.setFruitId(request.getFruitId());
-        needList.setRequiredQuantity(request.getRequiredQuantity());
-        needList.setCreatedBy(request.getCreatedBy());
-        needList.setNotes(request.getNotes());
-        needList.setCreatedDate(LocalDateTime.now());
-        needList.setStatus(NeedListStatus.CREATED);
-
-        NeedList savedNeedList = needListRepository.save(needList);
-
-        String userFullName = getUserFullName(savedNeedList.getCreatedBy());
-
-        auditLogService.createLog(
-                savedNeedList.getCreatedBy(),
-                userFullName,
-                AuditActionType.NEED_LIST_CREATED,
-                "NeedList",
-                savedNeedList.getId(),
-                userFullName + " ihtiyaç listesi oluşturdu. Kayıt ID: " + savedNeedList.getId()
-        );
-
-        return convertToResponse(savedNeedList);
-    }
-
-    /*
       YENİ ihtiyaç planı oluşturma akışı.
       Aynı transaction içinde önce bir DeliveryPlan kaydı oluşturur, ardından bütün
       ürün satırlarını backend'in ürettiği bu yeni planId ile kaydeder. planId asla
@@ -271,14 +238,6 @@ public class NeedListService {
                 .toList();
     }
 
-    // ID'ye göre ihtiyaç listesi getirir.
-    public NeedListResponse getNeedListById(Long id) {
-        NeedList needList = needListRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("İhtiyaç listesi bulunamadı"));
-
-        return convertToResponse(needList);
-    }
-
     /*
       ID'ye göre ihtiyaç listesini günceller.
 
@@ -329,45 +288,6 @@ public class NeedListService {
         );
 
         return convertToResponse(updatedNeedList);
-    }
-
-    /*
-      ID'ye göre ihtiyaç listesini siler.
-      updateNeedList ile aynı sahiplik kuralı geçerlidir.
-    */
-    public void deleteNeedList(Long id) {
-        NeedList needList = needListRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("İhtiyaç listesi bulunamadı"));
-
-        currentUserService.requireOwnerOrAdmin(
-                needList.getCreatedBy(),
-                "Yalnızca kendi oluşturduğunuz ihtiyaç kaydını silebilirsiniz."
-        );
-
-        Long userId = needList.getCreatedBy();
-        String userFullName = getUserFullName(userId);
-        Long deletedNeedListId = needList.getId();
-        Long planId = needList.getPlanId();
-
-        needListRepository.delete(needList);
-
-        auditLogService.createLog(
-                userId,
-                userFullName,
-                AuditActionType.NEED_LIST_DELETED,
-                "NeedList",
-                deletedNeedListId,
-                userFullName + " ihtiyaç listesini sildi. Kayıt ID: " + deletedNeedListId,
-                planId,
-                AuditStatus.SUCCESS,
-                null
-        );
-
-        notifyPlanManager(
-                planId,
-                "IHTIYAC_GUNCELLENDI",
-                "Plandan bir ürün çıkarıldı (Plan #" + planId + ")."
-        );
     }
 
     // Entity bilgisini frontend'e dönecek response yapısına çevirir.

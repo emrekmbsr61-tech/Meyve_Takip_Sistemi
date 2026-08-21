@@ -5,6 +5,9 @@ import com.emre.meyvetakipsistemi.auditlog.AuditLogService;
 import com.emre.meyvetakipsistemi.auth.CurrentUserService;
 import com.emre.meyvetakipsistemi.exception.ResourceNotFoundException;
 import com.emre.meyvetakipsistemi.needlist.NeedList;
+import com.emre.meyvetakipsistemi.task.dto.AssignableUserResponse;
+import com.emre.meyvetakipsistemi.task.dto.CompletedTaskResponse;
+import com.emre.meyvetakipsistemi.task.dto.CreateTaskRequest;
 import com.emre.meyvetakipsistemi.task.dto.TaskAssignmentResponse;
 import com.emre.meyvetakipsistemi.needlist.NeedListRepository;
 import com.emre.meyvetakipsistemi.notification.NotificationService;
@@ -15,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -77,8 +81,248 @@ public class TaskAssignmentService {
                 task.getAssignedAt(),
                 task.getDueDate(),
                 task.getTaskType(),
-                task.getStatus()
+                task.getStatus(),
+                task.getTitle()
         );
+    }
+
+    /*
+      Bu metodun görevi: Müdürün ELLE bir personele görev atamasını sağlamak
+      (örn. "Depo temizliği").
+
+      Akış görevlerinden (ALIM/TOPLAMA/TESLIMAT/ACCEPTANCE) iki farkı vardır:
+        - Bir ihtiyaç planına bağlı değildir, bu yüzden planId BOŞ bırakılır.
+        - Ne yapılacağı sabit olmadığı için açıklama title alanında saklanır.
+
+      Son teslim zamanı burada hesaplanır (şu an + istenen saat). Client'tan
+      hazır tarih kabul edilmez; aksi halde geçmiş bir tarih gönderilip görev
+      daha doğar doğmaz "gecikmiş" hale getirilebilirdi.
+    */
+    @Transactional
+    public TaskAssignmentResponse createManualTask(CreateTaskRequest request) {
+        User manager = requireManager(request.getManagerId());
+        User assignee = requireAssignableUser(request.getAssignedUserId());
+
+        TaskAssignment task = new TaskAssignment();
+        // Bilerek atanmaz: bu görevin bir planı yoktur (bkz. TaskType.GENEL).
+        task.setPlanId(null);
+        task.setAssignedUserId(assignee.getId());
+        // Görev tamamlandığında haber verilecek kişi: görevi atayan müdür.
+        task.setAssignedBy(manager.getId());
+        task.setTitle(request.getTitle().trim());
+        task.setAssignedAt(LocalDateTime.now());
+        task.setDueDate(LocalDateTime.now().plusHours(request.getDurationHours()));
+        task.setTaskType(TaskType.GENEL);
+        task.setStatus(TaskStatus.PENDING);
+
+        TaskAssignment saved = taskRepository.save(task);
+
+        auditLogService.createLog(
+                manager.getId(),
+                manager.getFullName(),
+                AuditActionType.TASK_ASSIGNED,
+                "TaskAssignment",
+                saved.getId(),
+                manager.getFullName() + ", " + assignee.getFullName() + " kullanıcısına \""
+                        + saved.getTitle() + "\" görevini atadı."
+        );
+
+        // Personel o an giriş yapmışsa görev anında ekranına düşer.
+        notificationService.notifyUser(
+                assignee.getId(),
+                "GOREV_ATANDI",
+                "Yeni görev atandı: " + saved.getTitle()
+        );
+
+        return toResponse(saved);
+    }
+
+    /*
+      Bu metodun görevi: Kendisine atanan GENEL görevi personelin "tamamlandı"
+      olarak işaretlemesini sağlamak.
+
+      Yalnızca GENEL görevler için çalışır. Akış görevleri (ALIM/TOPLAMA/
+      TESLIMAT/ACCEPTANCE) buradan tamamlanamaz: onlar ancak asıl işin kaydı
+      girilince (alım/toplama/teslimat/kabul yapılınca) kendi servislerinde
+      tamamlanır. Aksi halde personel işi hiç yapmadan görevi kapatabilirdi.
+    */
+    @Transactional
+    public TaskAssignmentResponse completeManualTask(Long taskId, Long userId) {
+        TaskAssignment task = taskRepository.findById(taskId)
+                .orElseThrow(() -> new ResourceNotFoundException("Görev bulunamadı"));
+
+        if (task.getTaskType() != TaskType.GENEL) {
+            throw new RuntimeException("Bu görev buradan tamamlanamaz");
+        }
+
+        // Görevi yalnızca sahibi (veya ADMIN) kapatabilir; kimlik token'dan okunur.
+        currentUserService.requireOwnerOrAdmin(
+                task.getAssignedUserId(),
+                "Bu görev size atanmamış."
+        );
+
+        if (task.getStatus() == TaskStatus.COMPLETED) {
+            throw new RuntimeException("Bu görev zaten tamamlanmış");
+        }
+
+        task.setStatus(TaskStatus.COMPLETED);
+        // Tamamlanma anı kaydedilir: "Tamamlanan İşlemler" ekranı bunu gösterir
+        // ve süresinde bitip bitmediği bu değerle karşılaştırılır.
+        task.setCompletedAt(LocalDateTime.now());
+        TaskAssignment saved = taskRepository.save(task);
+
+        String assigneeName = userRepository.findById(task.getAssignedUserId())
+                .map(User::getFullName)
+                .orElse("Bilinmeyen kullanıcı");
+
+        auditLogService.createLog(
+                task.getAssignedUserId(),
+                assigneeName,
+                AuditActionType.TASK_COMPLETED,
+                "TaskAssignment",
+                saved.getId(),
+                assigneeName + ", \"" + saved.getTitle() + "\" görevini tamamladı."
+        );
+
+        /*
+          Görevi atayan müdüre haber verilir; böylece işin bittiğini sormadan
+          öğrenir. Eski kayıtlarda assignedBy boş olabileceği için kontrol edilir.
+        */
+        if (saved.getAssignedBy() != null) {
+            notificationService.notifyUser(
+                    saved.getAssignedBy(),
+                    "GOREV_TAMAMLANDI",
+                    assigneeName + ", \"" + saved.getTitle() + "\" görevini tamamladı."
+            );
+        }
+
+        return toResponse(saved);
+    }
+
+    /*
+      Bu metodun görevi: "Tamamlanan İşlemler" ekranı için, tamamlanmış serbest
+      görevleri (GENEL) listelemek.
+
+      Yetki ve kapsam:
+        - MAGAZA_MUDURU: yalnızca KENDİ atadığı görevleri görür.
+        - ADMIN: kim atamış olursa olsun hepsini görür (genel gözetim).
+      Diğer roller bu listeye hiç erişemez; tamamlanmış işlerin denetimi
+      yönetim işidir (AcceptanceService.getCompletedAcceptances ile aynı kural).
+    */
+    public List<CompletedTaskResponse> getCompletedManualTasks(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Kullanıcı bulunamadı"));
+
+        List<TaskAssignment> tasks;
+
+        if (user.getRole() == UserRole.ADMIN) {
+            tasks = taskRepository.findByTaskTypeAndStatusOrderByCompletedAtDesc(
+                    TaskType.GENEL, TaskStatus.COMPLETED);
+        } else if (user.getRole() == UserRole.MAGAZA_MUDURU) {
+            tasks = taskRepository.findByTaskTypeAndStatusAndAssignedByOrderByCompletedAtDesc(
+                    TaskType.GENEL, TaskStatus.COMPLETED, user.getId());
+        } else {
+            throw new RuntimeException("Bu işlem için yönetici veya mağaza müdürü yetkisi gereklidir");
+        }
+
+        List<CompletedTaskResponse> result = new ArrayList<>();
+
+        for (TaskAssignment task : tasks) {
+            /*
+              Görev süresinde mi bitti? Karşılaştırma burada yapılır ki kural tek
+              yerde kalsın. Tarihlerden biri yoksa "geç kaldı" denmez.
+            */
+            boolean completedLate = task.getCompletedAt() != null
+                    && task.getDueDate() != null
+                    && task.getCompletedAt().isAfter(task.getDueDate());
+
+            result.add(new CompletedTaskResponse(
+                    task.getId(),
+                    task.getTitle(),
+                    userFullName(task.getAssignedUserId()),
+                    userFullName(task.getAssignedBy()),
+                    task.getDueDate(),
+                    task.getCompletedAt(),
+                    completedLate
+            ));
+        }
+
+        return result;
+    }
+
+    // Kullanıcı id'sinden ad soyad bulur; kullanıcı silinmişse anlaşılır bir metin döner.
+    private String userFullName(Long userId) {
+        if (userId == null) {
+            return "Bilinmeyen kullanıcı";
+        }
+
+        return userRepository.findById(userId)
+                .map(User::getFullName)
+                .orElse("Bilinmeyen kullanıcı");
+    }
+
+    /*
+      Bu metodun görevi: Müdürün görev atayabileceği personelleri listelemek.
+
+      Yalnızca operasyon personeli döner (mağaza personeli ve şoför). ADMIN ve
+      diğer müdürler bilerek dışarıda bırakılır: bu ekran saha görevi atamak
+      içindir, yöneticilere görev atamak için değil.
+    */
+    public List<AssignableUserResponse> getAssignableUsers(Long managerId) {
+        requireManager(managerId);
+
+        List<AssignableUserResponse> result = new ArrayList<>();
+
+        for (UserRole role : List.of(UserRole.MAGAZA_PERSONELI, UserRole.SOFOR)) {
+            for (User user : userRepository.findByRole(role)) {
+                result.add(new AssignableUserResponse(
+                        user.getId(),
+                        user.getFullName(),
+                        roleLabel(user.getRole())
+                ));
+            }
+        }
+
+        return result;
+    }
+
+    // Çağıranın var olan ve MAGAZA_MUDURU rolünde bir kullanıcı olduğunu doğrular.
+    private User requireManager(Long managerId) {
+        if (managerId == null) {
+            throw new RuntimeException("Kullanıcı kimliği gereklidir");
+        }
+
+        User manager = userRepository.findById(managerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Kullanıcı bulunamadı"));
+
+        if (manager.getRole() != UserRole.MAGAZA_MUDURU) {
+            throw new RuntimeException("Bu işlem için mağaza müdürü yetkisi gereklidir");
+        }
+
+        return manager;
+    }
+
+    // Görev atanacak kişinin var olduğunu ve görev alabilecek bir rolde olduğunu doğrular.
+    private User requireAssignableUser(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Görev atanacak kullanıcı bulunamadı"));
+
+        if (user.getRole() != UserRole.MAGAZA_PERSONELI && user.getRole() != UserRole.SOFOR) {
+            throw new RuntimeException("Yalnızca mağaza personeline veya şoföre görev atanabilir");
+        }
+
+        return user;
+    }
+
+    // Rol adını ekranda gösterilecek okunabilir metne çevirir.
+    private String roleLabel(UserRole role) {
+        return switch (role) {
+            case MAGAZA_PERSONELI -> "Mağaza Personeli";
+            case MAGAZA_MUDURU -> "Mağaza Müdürü";
+            case SOFOR -> "Şoför";
+            case ADMIN -> "Yönetici";
+            case PENDING -> "Onay Bekliyor";
+        };
     }
 
     /*

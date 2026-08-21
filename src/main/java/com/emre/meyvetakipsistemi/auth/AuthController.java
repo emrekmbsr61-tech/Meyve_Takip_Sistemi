@@ -5,6 +5,7 @@ import com.emre.meyvetakipsistemi.auth.dto.RegisterRequest;
 import com.emre.meyvetakipsistemi.auth.dto.ResendVerificationRequest;
 import com.emre.meyvetakipsistemi.auth.dto.VerifyEmailRequest;
 import com.emre.meyvetakipsistemi.exception.InvalidCredentialsException;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -37,9 +38,16 @@ public class AuthController {
         }
     }
 
-    // Kayıt isteğini alır, sonucu frontend'e döner.
+    /*
+      Kayıt isteğini alır, sonucu frontend'e döner.
+
+      @Valid ZORUNLUDUR: RegisterRequest üzerindeki doğrulama kuralları
+      (@NotBlank, @Email, @UniqueEmail, @UniqueUsername) yalnızca bu anotasyon
+      varsa çalıştırılır. Olmasaydı kurallar dosyada yazılı olurdu ama hiçbiri
+      devreye girmezdi.
+    */
     @PostMapping("/register")
-    public ResponseEntity<?> register(@RequestBody RegisterRequest request) {
+    public ResponseEntity<?> register(@Valid @RequestBody RegisterRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(authService.register(request));
     }
 

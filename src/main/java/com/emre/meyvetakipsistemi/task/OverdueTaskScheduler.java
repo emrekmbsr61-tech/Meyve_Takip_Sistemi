@@ -98,7 +98,14 @@ public class OverdueTaskScheduler {
                 .map(User::getFullName)
                 .orElse("Bilinmeyen kullanıcı");
 
-        String taskLabel = taskTypeLabel(task.getTaskType());
+        String taskLabel = taskLabel(task);
+
+        /*
+          Müdürün elle atadığı GENEL görevlerin planı yoktur (planId null).
+          Metne doğrudan eklenseydi kullanıcı "Plan #null" gibi anlamsız bir
+          ifade görürdü; bu yüzden plan bilgisi yalnızca varsa yazılır.
+        */
+        String planPart = task.getPlanId() == null ? "" : " (Plan #" + task.getPlanId() + ")";
 
         auditLogService.createLogSafely(
                 task.getAssignedUserId(),
@@ -106,8 +113,8 @@ public class OverdueTaskScheduler {
                 AuditActionType.SYSTEM_CHECK,
                 "TaskAssignment",
                 task.getId(),
-                "SYSTEM_CHECK: Plan #" + task.getPlanId() + " için " + assigneeName
-                        + " kullanıcısına atanan " + taskLabel + " görevinin süresi aşıldı!",
+                "SYSTEM_CHECK: " + assigneeName + " kullanıcısına atanan \"" + taskLabel
+                        + "\" görevinin süresi aşıldı!" + planPart,
                 task.getPlanId(),
                 AuditStatus.WARNING,
                 "{\"gorevTuru\":\"" + task.getTaskType().name() + "\","
@@ -119,8 +126,22 @@ public class OverdueTaskScheduler {
         notificationService.notifyUser(
                 task.getAssignedUserId(),
                 "GOREV_SURESI_ASILDI",
-                taskLabel + " görevinin süresi doldu (Plan #" + task.getPlanId() + ")."
+                "\"" + taskLabel + "\" görevinin süresi doldu." + planPart
         );
+    }
+
+    /*
+      Görevin ekranda/logda görünecek adını üretir.
+      GENEL görevlerde tür adı ("Görev") anlamsızdır; müdürün yazdığı açıklama
+      (örn. "Depo temizliği") kullanılır.
+    */
+    private String taskLabel(TaskAssignment task) {
+        if (task.getTaskType() == TaskType.GENEL
+                && task.getTitle() != null && !task.getTitle().isBlank()) {
+            return task.getTitle();
+        }
+
+        return taskTypeLabel(task.getTaskType());
     }
 
     // Görev türünü kullanıcıya gösterilen Türkçe adına çevirir.
@@ -134,6 +155,7 @@ public class OverdueTaskScheduler {
             case TOPLAMA -> "Alım (Toplama)";
             case TESLIMAT -> "Teslimat";
             case ACCEPTANCE -> "Mal Kabul";
+            case GENEL -> "Görev";
         };
     }
 }

@@ -68,6 +68,14 @@ const ALL_MENU_ITEMS = {
     iconColor: colors.blue,
     iconBackground: colors.blueLight,
   },
+  PlanProgress: {
+    screen: "PlanProgress",
+    title: "Devam Eden İşlemler",
+    description: "Hangi planın hangi aşamada beklediğini takip et.",
+    icon: "swap-horizontal-outline",
+    iconColor: colors.blue,
+    iconBackground: colors.blueLight,
+  },
   Acceptance: {
     screen: "Acceptance",
     title: "Mal Kabul Sayımı",
@@ -141,11 +149,17 @@ const ALL_MENU_ITEMS = {
   SOFOR: henüz kendine özel bir ekranı yok, sadece görevlerini ve ürünleri görür.
 */
 const ROLE_MENU_KEYS = {
+  /*
+    Sıra bilinçlidir: "Devam Eden İşlemler" ile "Tamamlanan İşlemler" yan yana
+    durur - biri süren işi, diğeri biteni gösterir, ikisi birlikte okunur.
+  */
   ADMIN: [
     "Dashboard",
     "NeedListList",
-    "ActiveTasks",
     "PurchaseManagement",
+    "ActiveTasks",
+    "PlanProgress",
+    "CompletedAcceptances",
     "Fruits",
     "AdminUserApproval",
     "AdminAuditLog",
@@ -155,19 +169,37 @@ const ROLE_MENU_KEYS = {
     tutarları ve kayıp tespitleri gibi yönetim bilgileri bulunur. Personel ve
     şoför bu bilgileri görmez, onların ekranları kendi işlerine odaklıdır.
   */
+  /*
+    Personelin menüsünde "Tamamlanan İşlemler" BİLEREK YOKTUR: tamamlanmış
+    işlemlerin denetimi yönetim işidir, personelin ekranı kendi aktif işine
+    odaklı kalır. Bu rapor artık ADMIN ve MAGAZA_MUDURU menüsünde bulunur.
+  */
   MAGAZA_PERSONELI: [
     "NeedListCreate",
     "NeedListList",
     "Acceptance",
     "ActiveTasks",
+    "Fruits",
+  ],
+  /*
+    Müdürün menüsünde "Mevcut İhtiyaçlar" BİLEREK YOKTUR: müdür ihtiyaçları
+    zaten "Alım İşlemleri" ekranında, alım yapacağı planın içinde görür. İki
+    ayrı ekranda aynı planları listelemek ekranı kalabalıklaştırıyordu.
+    Plana ekstra ürün ekleme de aynı sebeple oraya taşındı.
+  */
+  MAGAZA_MUDURU: [
+    "Dashboard",
+    "PurchaseManagement",
+    "ActiveTasks",
+    "PlanProgress",
     "CompletedAcceptances",
     "Fruits",
   ],
-  MAGAZA_MUDURU: ["Dashboard", "NeedListList", "PurchaseManagement", "ActiveTasks", "Fruits"],
   SOFOR: ["ActiveTasks", "Fruits"],
 };
 
 // Kullanıcının rolüne göre görebileceği kart listesini üretir.
+// Sıra, ROLE_MENU_KEYS içinde yazıldığı sıradır.
 function getMenuItemsForRole(role) {
   const keys = ROLE_MENU_KEYS[role] || [];
   return keys.map((key) => ALL_MENU_ITEMS[key]);

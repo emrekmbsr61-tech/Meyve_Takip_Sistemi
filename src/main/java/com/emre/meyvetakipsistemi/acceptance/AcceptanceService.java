@@ -298,23 +298,25 @@ public class AcceptanceService {
 
     /*
       "Tamamlanan İşlemler" ekranı için geçmiş mal kabul kayıtlarını döner.
-      MAGAZA_PERSONELI yalnızca kendi yaptığı kabulleri görür; ADMIN salt
-      okunur olarak herkesinkini görür. Yeni bir tablo kullanmaz — mevcut
-      Acceptance/AcceptanceItem kayıtları ürün bazında düzleştirilerek okunur.
+
+      Yetki: yalnızca ADMIN ve MAGAZA_MUDURU, hepsini salt okunur görür.
+      MAGAZA_PERSONELI bilerek DIŞARIDA bırakıldı: tamamlanmış işlemlerin
+      denetimi yönetim işidir, personelin ekranı kendi aktif işine odaklı kalır.
+      (Frontend'de de bu kart personel menüsünden kaldırıldı; buradaki kontrol
+      ise menüyü atlayıp doğrudan istek atılması ihtimaline karşı asıl kapıdır.)
+
+      Yeni bir tablo kullanmaz — mevcut Acceptance/AcceptanceItem kayıtları
+      ürün bazında düzleştirilerek okunur.
     */
     public List<CompletedAcceptanceItemResponse> getCompletedAcceptances(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("Kullanıcı bulunamadı"));
 
-        List<Acceptance> acceptances;
-
-        if (user.getRole() == UserRole.ADMIN) {
-            acceptances = acceptanceRepository.findAllByOrderByCreatedAtDesc();
-        } else if (user.getRole() == UserRole.MAGAZA_PERSONELI) {
-            acceptances = acceptanceRepository.findByReceivedByOrderByCreatedAtDesc(userId);
-        } else {
-            throw new RuntimeException("Bu işlem için yetkiniz yok");
+        if (user.getRole() != UserRole.ADMIN && user.getRole() != UserRole.MAGAZA_MUDURU) {
+            throw new RuntimeException("Bu işlem için yönetici veya mağaza müdürü yetkisi gereklidir");
         }
+
+        List<Acceptance> acceptances = acceptanceRepository.findAllByOrderByCreatedAtDesc();
 
         List<CompletedAcceptanceItemResponse> result = new ArrayList<>();
 

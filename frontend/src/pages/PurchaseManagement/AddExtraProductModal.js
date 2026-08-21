@@ -30,6 +30,11 @@ const colors = {
   NeedListCreate ekranındaki ürün seçme mantığıyla aynı fikri kullanır
   (ilk dokununca birim tam sayıysa 1, ondalıklıysa 0.5 ile başlar) ama
   bağımsız, küçük bir bileşen olarak tutulur — NeedListCreate'e dokunulmaz.
+
+  Konum notu: Bu bileşen önceden "Mevcut İhtiyaçlar" (NeedListList) ekranındaydı.
+  Müdürün menüsünden o ekran kaldırılınca buraya, alımın gerçekten yapıldığı
+  "Alım İşlemleri" ekranına taşındı; müdür artık planı açıp alımı girmeden önce
+  eksik kalan bir ürünü aynı ekrandan ekleyebiliyor.
 */
 export default function AddExtraProductModal({ visible, existingFruitIds, saving, errorMessage, onSave, onClose }) {
   const [fruits, setFruits] = useState([]);

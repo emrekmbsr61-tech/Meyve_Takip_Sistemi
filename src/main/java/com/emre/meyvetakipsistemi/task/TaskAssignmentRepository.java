@@ -12,4 +12,19 @@ public interface TaskAssignmentRepository extends JpaRepository<TaskAssignment, 
  // Purchase tamamlanınca ALIM görevini bulup COMPLETED yapmak ve aynı plan için
  // ikinci bir TOPLAMA görevi oluşturulmadığını kontrol etmek amacıyla kullanılır.
  Optional<TaskAssignment> findByPlanIdAndTaskType(Long planId, TaskType taskType);
+
+ // Bir planın BÜTÜN görevleri. "Devam Eden İşlemler" ekranı, planın hangi
+ // aşamada olduğunu bu listeye bakarak belirler (bkz. PlanProgressService).
+ List<TaskAssignment> findByPlanId(Long planId);
+
+ /*
+   "Tamamlanan İşlemler" ekranı için: müdürün KENDİ atadığı, tamamlanmış
+   serbest görevler (en yeniden eskiye).
+ */
+ List<TaskAssignment> findByTaskTypeAndStatusAndAssignedByOrderByCompletedAtDesc(
+         TaskType taskType, TaskStatus status, Long assignedBy);
+
+ // Aynısının ADMIN sürümü: kim atamış olursa olsun tamamlanmış tüm serbest görevler.
+ List<TaskAssignment> findByTaskTypeAndStatusOrderByCompletedAtDesc(
+         TaskType taskType, TaskStatus status);
 }

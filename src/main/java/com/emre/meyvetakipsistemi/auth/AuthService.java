@@ -14,6 +14,7 @@ import com.emre.meyvetakipsistemi.user.UserRepository;
 import com.emre.meyvetakipsistemi.user.UserRole;
 import com.emre.meyvetakipsistemi.verification.EmailVerificationCode;
 import com.emre.meyvetakipsistemi.verification.EmailVerificationCodeRepository;
+import org.jspecify.annotations.NonNull;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -23,7 +24,6 @@ import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
-import java.util.regex.Pattern;
 
 // Login işleminin kontrolünü yapan servis sınıfıdır.
 @Service
@@ -58,7 +58,7 @@ public class AuthService {
     }
 
     // Kullanıcı adı ve şifreyi kontrol eder.
-    public LoginResponse login(LoginRequest request) {
+    public LoginResponse login(@NonNull LoginRequest request) {
 
         Optional<User> optionalUser =
                 userRepository.findByUsername(request.getUsername());
@@ -195,12 +195,15 @@ public class AuthService {
         );
     }
 
-    // E-posta adresinin biçimini kontrol etmek için kullanılır.
-    private static final Pattern EMAIL_PATTERN =
-            Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
-
     /*
      * Yeni kullanıcı kaydı oluşturur.
+     *
+     * Alan doğrulamaları (boş mu, e-posta biçimi doğru mu, kullanıcı adı/e-posta
+     * benzersiz mi) ARTIK BURADA DEĞİL, RegisterRequest üzerindeki anotasyonlarda
+     * yapılır ve istek bu metoda ulaşmadan reddedilir (bkz. AuthController'daki
+     * @Valid). Burada yalnızca anotasyonla ifade EDİLEMEYEN kural kalır: iki
+     * alanı birbiriyle karşılaştıran şifre eşleşmesi.
+     *
      * @Transactional: doğrulama e-postası gönderilemezse (EmailService hata fırlatırsa)
      * hem User hem de EmailVerificationCode kaydı veritabanına hiç yazılmamış gibi
      * geri alınır (rollback). Böylece mail gitmeyen bir kullanıcı yarım kayıtlı kalmaz.
@@ -208,16 +211,8 @@ public class AuthService {
     @Transactional
     public RegisterResponse register(RegisterRequest request) {
 
-        validateRegisterRequest(request);
-
-        // Kullanıcı adı büyük/küçük harf farkı gözetmeden benzersiz olmalı.
-        if (userRepository.existsByUsernameIgnoreCase(request.getUsername())) {
-            throw new RuntimeException("Bu kullanıcı adı zaten kullanılıyor");
-        }
-
-        // E-posta büyük/küçük harf farkı gözetmeden benzersiz olmalı.
-        if (userRepository.existsByEmailIgnoreCase(request.getEmail())) {
-            throw new RuntimeException("Bu e-posta adresi zaten kullanılıyor");
+        if (!request.getPassword().equals(request.getPasswordRepeat())) {
+            throw new RuntimeException("Şifreler birbiriyle eşleşmiyor");
         }
 
         User user = new User();
@@ -351,46 +346,6 @@ public class AuthService {
     private String generateVerificationCode() {
         int code = new SecureRandom().nextInt(1_000_000);
         return String.format("%06d", code);
-    }
-
-    // Register isteğindeki alanları kontrol eder, hatalıysa sade Türkçe mesajla hata fırlatır.
-    private void validateRegisterRequest(RegisterRequest request) {
-
-        if (isBlank(request.getFullName())) {
-            throw new RuntimeException("Ad soyad boş olamaz");
-        }
-
-        if (isBlank(request.getUsername())) {
-            throw new RuntimeException("Kullanıcı adı boş olamaz");
-        }
-
-        if (request.getUsername().contains(" ")) {
-            throw new RuntimeException("Kullanıcı adı boşluk içeremez");
-        }
-
-        if (isBlank(request.getEmail())) {
-            throw new RuntimeException("E-posta boş olamaz");
-        }
-
-        if (!EMAIL_PATTERN.matcher(request.getEmail()).matches()) {
-            throw new RuntimeException("E-posta adresi geçerli biçimde değil");
-        }
-
-        if (isBlank(request.getPassword())) {
-            throw new RuntimeException("Şifre boş olamaz");
-        }
-
-        if (request.getPassword().length() < 6) {
-            throw new RuntimeException("Şifre en az 6 karakter olmalı");
-        }
-
-        if (isBlank(request.getPasswordRepeat())) {
-            throw new RuntimeException("Şifre tekrar alanı boş olamaz");
-        }
-
-        if (!request.getPassword().equals(request.getPasswordRepeat())) {
-            throw new RuntimeException("Şifreler birbiriyle eşleşmiyor");
-        }
     }
 
     // Bir metin alanının boş veya sadece boşluklardan oluşup oluşmadığını kontrol eder.

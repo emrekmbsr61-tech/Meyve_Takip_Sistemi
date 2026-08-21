@@ -4,6 +4,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { getCompletedAcceptances } from "../../services/acceptanceService";
+import { getCompletedTasks } from "../../services/taskService";
 import { getPlanSummary } from "../../services/planSummaryService";
 import PlanSummaryModal from "../NeedListList/PlanSummaryModal";
 
@@ -51,15 +52,29 @@ export default function CompletedAcceptances({ currentUser }) {
   const [summaryModalPlan, setSummaryModalPlan] = useState(null);
   const [planSummaries, setPlanSummaries] = useState({});
 
+  /*
+    Müdürün personele atadığı ve personelin tamamladığı serbest görevler
+    (bkz. TaskType.GENEL). Mal kabullerden AYRI bir bölümde gösterilir:
+    ikisi farklı şeylerdir, aynı listede karıştırmak kafa karıştırırdı.
+  */
+  const [completedTasks, setCompletedTasks] = useState([]);
+
   const loadItems = useCallback(async () => {
     try {
       setLoading(true);
       setErrorMessage("");
 
-      const data = await getCompletedAcceptances(currentUser.id);
-      setRawItems(Array.isArray(data) ? data : []);
+      // İki liste birlikte çekilir; biri diğerini beklemez.
+      const [acceptanceData, taskData] = await Promise.all([
+        getCompletedAcceptances(currentUser.id),
+        getCompletedTasks(currentUser.id),
+      ]);
+
+      setRawItems(Array.isArray(acceptanceData) ? acceptanceData : []);
+      setCompletedTasks(Array.isArray(taskData) ? taskData : []);
     } catch (error) {
       setRawItems([]);
+      setCompletedTasks([]);
       setErrorMessage(error.message || "Tamamlanan işlemler alınamadı.");
     } finally {
       setLoading(false);
@@ -126,10 +141,43 @@ export default function CompletedAcceptances({ currentUser }) {
 
       {!loading && errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
-      {!loading && !errorMessage && plans.length === 0 ? (
+      {!loading && !errorMessage && plans.length === 0 && completedTasks.length === 0 ? (
         <View style={styles.empty}>
           <Ionicons name="checkmark-done-outline" size={38} color={colors.muted} />
           <Text style={styles.emptyTitle}>Henüz tamamlanan işlem yok</Text>
+        </View>
+      ) : null}
+
+      {/*
+        Tamamlanan görevler bölümü. Mal kabul kartlarının ÜSTÜNDE durur çünkü
+        bunlar müdürün kendi verdiği işlerdir ve önce onların sonucunu görmek ister.
+      */}
+      {!loading && !errorMessage && completedTasks.length > 0 ? (
+        <View style={styles.taskSection}>
+          <Text style={styles.sectionTitle}>Tamamlanan Görevler</Text>
+
+          {completedTasks.map((task) => (
+            <View key={task.id} style={styles.taskCard}>
+              <View style={styles.taskTop}>
+                <Ionicons name="checkmark-circle" size={20} color={colors.green} />
+
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.taskTitle}>{task.title}</Text>
+                  <Text style={styles.taskMeta}>{task.assigneeName}</Text>
+                </View>
+
+                {task.completedLate ? (
+                  <View style={styles.lateBadge}>
+                    <Text style={styles.lateText}>Geç tamamlandı</Text>
+                  </View>
+                ) : null}
+              </View>
+
+              <Text style={styles.taskDate}>{formatDate(task.completedAt)}</Text>
+            </View>
+          ))}
+
+          {plans.length > 0 ? <Text style={styles.sectionTitle}>Tamamlanan Mal Kabuller</Text> : null}
         </View>
       ) : null}
 
@@ -170,6 +218,34 @@ const styles = StyleSheet.create({
   content: { padding: 16, paddingBottom: 32 },
   intro: { color: colors.muted, marginBottom: 12, fontSize: 13 },
   errorText: { color: colors.red, fontWeight: "600", marginBottom: 10 },
+
+  taskSection: { marginBottom: 4 },
+  sectionTitle: {
+    color: colors.dark,
+    fontSize: 16,
+    fontWeight: "800",
+    marginBottom: 10,
+    marginTop: 4,
+  },
+  taskCard: {
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    padding: 13,
+    marginBottom: 9,
+  },
+  taskTop: { flexDirection: "row", alignItems: "center", gap: 10 },
+  taskTitle: { color: colors.dark, fontSize: 15, fontWeight: "700" },
+  taskMeta: { color: colors.muted, fontSize: 12, marginTop: 2 },
+  taskDate: { color: colors.muted, fontSize: 12, marginTop: 9 },
+  lateBadge: {
+    backgroundColor: "#FDECEC",
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 14,
+  },
+  lateText: { color: colors.red, fontWeight: "800", fontSize: 11 },
   empty: {
     alignItems: "center",
     backgroundColor: colors.white,

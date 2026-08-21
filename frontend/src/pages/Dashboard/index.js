@@ -1,5 +1,5 @@
-import { useCallback, useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useCallback, useMemo, useState } from "react";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
@@ -39,6 +39,9 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
+  // O an açık olan planın numarası; aynı anda tek bir plan açık kalır.
+  const [expandedPlanKey, setExpandedPlanKey] = useState(null);
+
   const loadDashboard = useCallback(async () => {
     try {
       setErrorMessage("");
@@ -55,6 +58,46 @@ export default function Dashboard() {
       loadDashboard();
     }, [loadDashboard])
   );
+
+  /*
+    Farkları PLAN bazında gruplar.
+
+    Neden: backend her ürün için ayrı bir satır döner. Bir planda 5 üründe fark
+    varsa ekranda alt alta 5 kart görünüyordu ve hangi kartın hangi plana ait
+    olduğu karışıyordu. Artık önce plan kartları listelenir; bir plana
+    dokununca YALNIZCA o planın ürün farkları açılır.
+
+    Not: Bu hook, aşağıdaki erken "return"lerin ÜSTÜNDE olmak zorundadır -
+    React hook'ları koşullu çalıştırılamaz. Bu yüzden data henüz yokken de
+    güvenle çalışacak şekilde (data?.) yazılmıştır.
+  */
+  const issueGroups = useMemo(() => {
+    const groupsByPlan = new Map();
+
+    for (const issue of data?.recentIssues || []) {
+      const key = issue.planId ?? "bilinmeyen";
+
+      if (!groupsByPlan.has(key)) {
+        groupsByPlan.set(key, {
+          key,
+          planId: issue.planId,
+          storeName: issue.storeName,
+          completedAt: issue.completedAt,
+          lossCount: 0,
+          items: [],
+        });
+      }
+
+      const group = groupsByPlan.get(key);
+      group.items.push(issue);
+
+      if (issue.lossDetected) {
+        group.lossCount += 1;
+      }
+    }
+
+    return Array.from(groupsByPlan.values());
+  }, [data]);
 
   if (loading) {
     return (
@@ -77,7 +120,6 @@ export default function Dashboard() {
     return null;
   }
 
-  const issues = data.recentIssues || [];
   const problemCount = data.criticalIssueCount + data.warningIssueCount;
 
   return (
@@ -188,7 +230,7 @@ export default function Dashboard() {
       */}
       <Text style={styles.sectionTitle}>Miktar Farkları</Text>
 
-      {issues.length === 0 ? (
+      {issueGroups.length === 0 ? (
         <View style={styles.emptyCard}>
           <Ionicons name="shield-checkmark-outline" size={34} color={colors.green} />
           <Text style={styles.emptyTitle}>Fark yok</Text>
@@ -197,12 +239,63 @@ export default function Dashboard() {
       ) : (
         <>
           <Text style={styles.sectionHint}>
-            Tamamlanan planlarda tespit edilen farklar (en yeniden eskiye).
+            Fark tespit edilen planlar (en yeniden eskiye). Ayrıntıyı görmek için bir plana dokunun.
           </Text>
 
-          {issues.map((issue, index) => (
-            <IssueCard key={index} issue={issue} />
-          ))}
+          {issueGroups.map((group) => {
+            const acik = expandedPlanKey === group.key;
+            const kayipVar = group.lossCount > 0;
+
+            return (
+              <View key={group.key} style={styles.planGroup}>
+                {/* Plan başlığı: dokununca o planın ürün farkları açılır/kapanır */}
+                <Pressable
+                  style={styles.planHeader}
+                  onPress={() => setExpandedPlanKey(acik ? null : group.key)}
+                >
+                  <View
+                    style={[
+                      styles.planIconBox,
+                      { backgroundColor: kayipVar ? colors.redLight : colors.orangeLight },
+                    ]}
+                  >
+                    <Ionicons
+                      name={kayipVar ? "alert-circle-outline" : "warning-outline"}
+                      size={19}
+                      color={kayipVar ? colors.red : colors.orange}
+                    />
+                  </View>
+
+                  <View style={styles.planHeaderText}>
+                    <Text style={styles.planTitle}>
+                      {group.storeName || "Bilinmeyen mağaza"}
+                    </Text>
+
+                    <Text style={styles.planMeta}>
+                      {group.planId ? `Plan #${group.planId} · ` : ""}
+                      {group.items.length} üründe fark
+                      {kayipVar ? ` · ${group.lossCount} kayıp şüphesi` : ""}
+                    </Text>
+                  </View>
+
+                  <Ionicons
+                    name={acik ? "chevron-up" : "chevron-down"}
+                    size={20}
+                    color={colors.gray}
+                  />
+                </Pressable>
+
+                {/* Yalnızca açık plandaki ürün kartları çizilir */}
+                {acik ? (
+                  <View style={styles.planBody}>
+                    {group.items.map((issue, index) => (
+                      <IssueCard key={index} issue={issue} />
+                    ))}
+                  </View>
+                ) : null}
+              </View>
+            );
+          })}
         </>
       )}
     </ScrollView>
@@ -320,4 +413,28 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { color: colors.text, fontWeight: "800", marginTop: 8, fontSize: 15 },
   emptyText: { color: colors.gray, fontSize: 13, marginTop: 3, textAlign: "center" },
+
+  planGroup: { marginBottom: 10 },
+  planHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    padding: 13,
+  },
+  planIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  planHeaderText: { flex: 1 },
+  planTitle: { color: colors.text, fontSize: 15, fontWeight: "800" },
+  planMeta: { color: colors.gray, fontSize: 12, marginTop: 3 },
+  // Açılan ürün kartları, ait oldukları planın altında hafif içeriden başlar.
+  planBody: { marginTop: 9, paddingLeft: 10 },
 });

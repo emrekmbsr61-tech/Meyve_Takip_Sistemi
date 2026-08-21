@@ -20,7 +20,11 @@ public class TaskAssignmentResponse {
 
     private Long id;
 
-    // Görevin ait olduğu plan; tüm aşamalar bu numarayla birbirine bağlanır.
+    /*
+      Görevin ait olduğu plan; tüm aşamalar bu numarayla birbirine bağlanır.
+      GENEL (müdürün elle atadığı) görevlerde BOŞ gelir - frontend bu alanı
+      göstermeden önce dolu olup olmadığını kontrol etmelidir.
+    */
     private Long planId;
 
     private Long assignedUserId;
@@ -31,9 +35,16 @@ public class TaskAssignmentResponse {
     // (bkz. TaskDeadlineCalculator).
     private LocalDateTime dueDate;
 
-    // ALIM, TOPLAMA, TESLIMAT, ACCEPTANCE
+    // ALIM, TOPLAMA, TESLIMAT, ACCEPTANCE, GENEL
     private TaskType taskType;
 
     // PENDING, IN_PROGRESS, COMPLETED, OVERDUE
     private TaskStatus status;
+
+    /*
+      Görevin açıklaması. Yalnızca GENEL görevlerde doludur (örn. "Depo
+      temizliği"); akış görevlerinde ne yapılacağı taskType'tan bellidir ve
+      bu alan boş gelir.
+    */
+    private String title;
 }

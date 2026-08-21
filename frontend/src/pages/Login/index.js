@@ -1,6 +1,20 @@
 import { useState } from "react";
-import { View, Text, TextInput, Button, ActivityIndicator, Pressable } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import Ionicons from "@expo/vector-icons/Ionicons";
+
 import { login } from "../../services/authService";
+import AuthLayout from "../../components/AuthLayout";
+import AuthField from "../../components/AuthField";
+
+const colors = {
+  primary: "#2E7D32",
+  white: "#FFFFFF",
+  text: "#17211B",
+  gray: "#6B7280",
+  red: "#DC2626",
+  redLight: "#FDECEC",
+  redBorder: "#F5B8B3",
+};
 
 export default function Login({ onLoginSuccess, onGoToRegister }) {
   const [username, setUsername] = useState("");
@@ -20,73 +34,133 @@ export default function Login({ onLoginSuccess, onGoToRegister }) {
 
       const user = await login(username, password); //authService.js ten gelir login
 
-      setMessage("Giriş başarılı");
-      console.log("Giriş yapan kullanıcı:", user);
-
       onLoginSuccess(user);
     } catch (error) {
       setMessage(error.message);
-      console.log("Login hatası:", error.message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <View style={{ flex: 1, padding: 35, justifyContent: "center" }}>
-      <Text style={{ fontSize: 28, fontWeight: "bold", marginBottom: 8 }}>
-        Meyve Takip Sistemi
-      </Text>
-
-      <Text style={{ fontSize: 18, marginBottom: 30 }}>
-        Kullanıcı Girişi
-      </Text>
-
-      <Text>Kullanıcı Adı</Text>
-      <TextInput
+    <AuthLayout
+      heading="Giriş yap"
+      description="Devam etmek için kullanıcı bilgilerini gir."
+    >
+      <AuthField
+        label="Kullanıcı Adı"
+        icon="person-outline"
         value={username}
         onChangeText={setUsername}
         placeholder="Kullanıcı adını gir"
         autoCapitalize="none"
-        style={{
-          borderWidth: 1,
-          borderColor: "#999",
-          padding: 10,
-          marginBottom: 15,
-          borderRadius: 6,
-        }}
+        editable={!loading}
       />
 
-      <Text>Şifre</Text>
-      <TextInput
+      <AuthField
+        label="Şifre"
+        icon="lock-closed-outline"
         value={password}
         onChangeText={setPassword}
         placeholder="Şifreni gir"
         secureTextEntry //şifreyi gizli göster
-        style={{
-          borderWidth: 1,
-          borderColor: "#999",
-          padding: 10,
-          marginBottom: 20,
-          borderRadius: 6,
-        }}
+        editable={!loading}
       />
 
-      {loading ? (
-        <ActivityIndicator />
-      ) : (
-        <Button title="Giriş Yap" onPress={handleLogin} />
-      )}
+      {/* Hata mesajı: düz kırmızı yazı yerine fark edilir bir uyarı kutusu. */}
+      {message ? (
+        <View style={styles.errorBox}>
+          <Ionicons name="alert-circle-outline" size={19} color={colors.red} />
+          <Text style={styles.errorText}>{message}</Text>
+        </View>
+      ) : null}
+
+      <Pressable
+        style={({ pressed }) => [
+          styles.primaryButton,
+          loading && styles.primaryButtonDisabled,
+          pressed && styles.primaryButtonPressed,
+        ]}
+        onPress={handleLogin}
+        disabled={loading}
+      >
+        {loading ? (
+          <ActivityIndicator color={colors.white} />
+        ) : (
+          <Text style={styles.primaryButtonText}>Giriş Yap</Text>
+        )}
+      </Pressable>
 
       {onGoToRegister ? (
-        <Pressable onPress={onGoToRegister} style={{ marginTop: 24 }}>
-          <Text style={{ color: "#2E7D32", textAlign: "center" }}>
-            Hesabın yok mu? Kayıt ol
+        <Pressable
+          onPress={onGoToRegister}
+          style={styles.footerLink}
+          disabled={loading}
+        >
+          <Text style={styles.footerText}>
+            Hesabın yok mu? <Text style={styles.footerAction}>Kayıt ol</Text>
           </Text>
         </Pressable>
       ) : null}
-
-      <Text style={{ marginTop: 20, color: "red" }}>{message}</Text>
-    </View>
+    </AuthLayout>
   );
 }
+
+const styles = StyleSheet.create({
+  errorBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    backgroundColor: colors.redLight,
+    borderWidth: 1,
+    borderColor: colors.redBorder,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 6,
+  },
+
+  errorText: {
+    flex: 1,
+    color: colors.red,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+
+  primaryButton: {
+    height: 52,
+    backgroundColor: colors.primary,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 10,
+  },
+
+  primaryButtonDisabled: {
+    opacity: 0.6,
+  },
+
+  primaryButtonPressed: {
+    opacity: 0.85,
+  },
+
+  primaryButtonText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: "800",
+  },
+
+  footerLink: {
+    marginTop: 20,
+    alignItems: "center",
+  },
+
+  footerText: {
+    color: colors.gray,
+    fontSize: 14,
+  },
+
+  footerAction: {
+    color: colors.primary,
+    fontWeight: "800",
+  },
+});

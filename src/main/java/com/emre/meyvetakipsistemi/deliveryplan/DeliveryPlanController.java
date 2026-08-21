@@ -1,6 +1,7 @@
 package com.emre.meyvetakipsistemi.deliveryplan;
 
 import com.emre.meyvetakipsistemi.deliveryplan.dto.DeliveryPlanResponse;
+import com.emre.meyvetakipsistemi.deliveryplan.dto.PlanProgressResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -24,6 +25,22 @@ public class DeliveryPlanController {
 
     @Autowired
     private DeliveryPlanService deliveryPlanService;
+
+    @Autowired
+    private PlanProgressService planProgressService;
+
+    /*
+      "Devam Eden İşlemler": tamamlanmamış planların şu an hangi aşamada
+      beklediğini döner (bkz. PlanProgressService).
+
+      Yolun sabit kısmı ("/in-progress"), aşağıdaki "/{id}" kalıbından ÖNCE
+      tanımlanır; aksi halde Spring "in-progress" metnini bir id sanabilirdi.
+    */
+    @PreAuthorize("hasAnyRole('ADMIN','MAGAZA_MUDURU')")
+    @GetMapping("/in-progress")
+    public List<PlanProgressResponse> getInProgressPlans(@RequestParam Long userId) {
+        return planProgressService.getInProgressPlans(userId);
+    }
 
     // Sistemdeki tüm teslimat planlarını listeler.
     @PreAuthorize("hasRole('ADMIN')")

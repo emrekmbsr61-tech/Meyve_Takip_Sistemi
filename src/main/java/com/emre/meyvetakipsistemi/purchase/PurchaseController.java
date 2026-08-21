@@ -9,6 +9,7 @@ import com.emre.meyvetakipsistemi.purchase.dto.PurchasePlanRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 // MAGAZA_MUDURU'nün alım (Purchase) isteklerini karşılar.
 @RestController
@@ -23,13 +24,26 @@ public class PurchaseController {
         this.auditLogService = auditLogService;
     }
 
+    /*
+      ---- ROL BAZLI YETKİLENDİRME ----
+      Aşağıdaki @PreAuthorize anotasyonları, isteğin Controller'a girmesine bile
+      izin vermeden rolü kontrol eder. Rol, isteğin gövdesinden DEĞİL, doğrulanmış
+      JWT token'ından okunur (bkz. JwtAuthenticationFilter -> ROLE_<rol>).
+
+      Servislerdeki requireManager/requireViewer kontrolleri KALDIRILMADI: bunlar
+      "hangi kullanıcı" sorusunu (sahiplik) yanıtlar, anotasyon ise "hangi rol"
+      sorusunu. İkisi birlikte iki katmanlı koruma sağlar.
+    */
+
     // Alımı henüz tamamlanmamış planları döner.
+    @PreAuthorize("hasAnyRole('MAGAZA_MUDURU','ADMIN')")
     @GetMapping("/pending-plans")
     public ResponseEntity<?> getPendingPurchasePlans(@RequestParam Long managerId) {
         return ResponseEntity.ok(purchaseService.getPendingPurchasePlans(managerId));
     }
 
     // Seçilen planın ürünlerini ve ihtiyaç bilgilerini döner.
+    @PreAuthorize("hasAnyRole('MAGAZA_MUDURU','ADMIN')")
     @GetMapping("/plans/{planId}")
     public ResponseEntity<?> getPurchasePlanDetail(
             @PathVariable Long planId,
@@ -38,7 +52,8 @@ public class PurchaseController {
         return ResponseEntity.ok(purchaseService.getPurchasePlanDetail(managerId, planId));
     }
 
-    // Bir planın tüm ürünleri için alım kaydı oluşturur.
+    // Bir planın tüm ürünleri için alım kaydı oluşturur. ADMIN yalnızca izler, kayıt yapamaz.
+    @PreAuthorize("hasRole('MAGAZA_MUDURU')")
     @PostMapping("/plan")
     public ResponseEntity<?> createPurchasesForPlan(@Valid @RequestBody PurchasePlanRequest request) {
         try {

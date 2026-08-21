@@ -6,23 +6,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/users")
 public class UserController {
     @Autowired
     private UserService userService;
-
-    @PostMapping
-    public UserResponse createUser(@RequestBody User user) {
-        return userService.createUser(user);
-    }
-
-    @GetMapping
-    public List<UserResponse> getAllUsers(){
-        return userService.getAllUsers();
-    }
 
     /*
       Dikkat: "/pending" sabit yolu, Spring tarafından "/{id}" ile çakışmadan
@@ -35,12 +24,6 @@ public class UserController {
     @GetMapping("/pending")
     public ResponseEntity<?> getPendingUsers(@RequestParam Long adminId) {
         return ResponseEntity.ok(userService.getPendingUsers(adminId));
-    }
-
-    @GetMapping("/{id}")
-    public UserResponse getUserById(@PathVariable Long id)
-    {        //urldeki id değerini alır
-        return userService.getUserById(id);
     }
 
     // ADMIN, onay bekleyen (veya herhangi bir) kullanıcıya rol atar.

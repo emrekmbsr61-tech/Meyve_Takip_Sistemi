@@ -10,7 +10,7 @@ import {
 import { useFocusEffect } from "@react-navigation/native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
-import { getTasks } from "../../services/taskService";
+import { completeManualTask, getTasks } from "../../services/taskService";
 import CountdownText from "../../components/CountdownText";
 
 const colors = {
@@ -29,7 +29,33 @@ const TASK_TYPE_LABELS = {
   TOPLAMA: "Alım Görevi",
   TESLIMAT: "Teslimat Görevi",
   ACCEPTANCE: "Mal Kabul",
+  // Müdürün elle atadığı serbest görev; başlığı sabit değildir, task.title'dan gelir.
+  GENEL: "Görev",
 };
+
+/*
+  Kartta gösterilecek başlık. GENEL görevlerde tür adı ("Görev") bilgi vermez;
+  müdürün yazdığı açıklama (örn. "Depo temizliği") gösterilir.
+*/
+function taskTitle(task) {
+  if (task.taskType === "GENEL" && task.title) {
+    return task.title;
+  }
+
+  return TASK_TYPE_LABELS[task.taskType] || task.taskType;
+}
+
+/*
+  Kartın alt satırı. GENEL görevlerin planı YOKTUR (planId null gelir); bu
+  yüzden doğrudan yazdırılırsa ekranda "Plan #null" görünürdü.
+*/
+function taskSubtitle(task) {
+  if (task.planId == null) {
+    return "Müdür tarafından atandı";
+  }
+
+  return `Plan #${task.planId}`;
+}
 
 const TASK_STATUS_LABELS = {
   PENDING: "Bekliyor",
@@ -74,6 +100,23 @@ export default function SoforTaskList({ currentUser, navigation }) {
       setLoading(false);
     }
   }, [currentUser.id]);
+
+  // Müdürün atadığı serbest görevi tamamlar (akış görevleri buradan kapatılamaz).
+  const [completingTaskId, setCompletingTaskId] = useState(null);
+
+  const completeTask = async (task) => {
+    try {
+      setCompletingTaskId(task.id);
+      setErrorMessage("");
+
+      await completeManualTask(task.id, currentUser.id);
+      await loadTasks();
+    } catch (error) {
+      setErrorMessage(error.message || "Görev tamamlanamadı.");
+    } finally {
+      setCompletingTaskId(null);
+    }
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -121,18 +164,29 @@ export default function SoforTaskList({ currentUser, navigation }) {
           <Pressable
             key={task.id}
             style={styles.taskCard}
-            onPress={() => navigation.navigate("SoforTaskDetail", { task })}
+            /*
+              GENEL görevlerin ayrı bir detay ekranı yoktur (yapılacak iş zaten
+              başlıkta yazıyor). Bu yüzden yalnızca akış görevleri tıklanabilir;
+              aksi halde kullanıcı "detay bulunmuyor" diyen boş bir ekrana düşerdi.
+            */
+            onPress={
+              task.taskType === "GENEL"
+                ? undefined
+                : () => navigation.navigate("SoforTaskDetail", { task })
+            }
           >
             <View style={styles.cardTop}>
               <View style={styles.iconBox}>
-                <Ionicons name="cube-outline" size={28} color={colors.green} />
+                <Ionicons
+                  name={task.taskType === "GENEL" ? "clipboard-outline" : "cube-outline"}
+                  size={28}
+                  color={colors.green}
+                />
               </View>
 
               <View style={styles.titleArea}>
-                <Text style={styles.taskTitle}>
-                  {TASK_TYPE_LABELS[task.taskType] || task.taskType}
-                </Text>
-                <Text style={styles.taskSubtitle}>Plan #{task.planId}</Text>
+                <Text style={styles.taskTitle}>{taskTitle(task)}</Text>
+                <Text style={styles.taskSubtitle}>{taskSubtitle(task)}</Text>
               </View>
 
               <View style={styles.statusBadge}>
@@ -144,8 +198,29 @@ export default function SoforTaskList({ currentUser, navigation }) {
 
             <View style={styles.footerRow}>
               <CountdownText dueDate={task.dueDate} style={styles.remainingText} />
-              <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+
+              {/* Ok işareti yalnızca detay ekranı olan görevlerde anlamlıdır. */}
+              {task.taskType === "GENEL" ? null : (
+                <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+              )}
             </View>
+
+            {/* Serbest görevler bu butonla kapatılır; akış görevleri kendi ekranlarında tamamlanır. */}
+            {task.taskType === "GENEL" ? (
+              <Pressable
+                style={[
+                  styles.completeButton,
+                  completingTaskId === task.id && styles.completeButtonDisabled,
+                ]}
+                onPress={() => completeTask(task)}
+                disabled={completingTaskId === task.id}
+              >
+                <Ionicons name="checkmark-circle-outline" size={19} color={colors.green} />
+                <Text style={styles.completeButtonText}>
+                  {completingTaskId === task.id ? "Kaydediliyor..." : "Tamamlandı olarak işaretle"}
+                </Text>
+              </Pressable>
+            ) : null}
           </Pressable>
         ))}
     </ScrollView>
@@ -221,4 +296,17 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   remainingText: { color: colors.muted, fontWeight: "600", fontSize: 13 },
+  completeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    borderWidth: 1,
+    borderColor: colors.green,
+    borderRadius: 12,
+    paddingVertical: 11,
+    marginTop: 11,
+  },
+  completeButtonDisabled: { opacity: 0.6 },
+  completeButtonText: { color: colors.green, fontWeight: "800", fontSize: 14 },
 });

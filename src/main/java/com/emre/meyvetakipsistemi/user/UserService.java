@@ -3,8 +3,6 @@ package com.emre.meyvetakipsistemi.user;
 import com.emre.meyvetakipsistemi.exception.ResourceNotFoundException;
 import com.emre.meyvetakipsistemi.user.dto.UserResponse;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import java.util.List;
 
@@ -20,35 +18,6 @@ public class UserService {
 
     @Autowired
     private UserRepository  userRepository;
-
-    private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
-
-    /*
-      Yeni kullanıcı kaydı oluşturur.
-      Not: /api/auth/register akışıyla aynı güvenlik kuralı burada da uygulanır:
-      client "role" alanında ne gönderirse göndersin dikkate alınmaz, her yeni
-      kullanıcı ADMIN onayı bekleyen PENDING rolüyle kaydedilir. Aksi halde bu
-      eski/ham endpoint, yönetici onay sistemini tamamen atlamak için kullanılabilirdi.
-    */
-    public UserResponse createUser(User user){
-        user.setPassword(passwordEncoder.encode(user.getPassword()));
-        user.setRole(UserRole.PENDING);
-        user.setIsVerified(false);
-        return toResponse(userRepository.save(user));
-    }
-
-    //tüm kullanıcıları listeleme
-    public List<UserResponse> getAllUsers(){
-        return userRepository.findAll().stream().map(this::toResponse).toList();
-    }
-
-    //Id değerine göre tek bir kullanıcı getirme
-    public UserResponse getUserById(Long id){
-        User user = userRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Kullanıcı bulunamadı"));
-
-        return toResponse(user);
-    }
 
     /*
       User entity'sini dışarı açılabilecek güvenli hale çevirir.

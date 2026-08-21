@@ -6,6 +6,7 @@ import com.emre.meyvetakipsistemi.collection.dto.CollectionPlanRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 /*
   ŞOFÖR'ün TOPLAMA görevi kapsamındaki toplama (Collection) isteklerini karşılar.
@@ -25,7 +26,14 @@ public class CollectionController {
         this.collectionService = collectionService;
     }
 
+    /*
+      Bu modülün TAMAMI yalnızca SOFOR rolüne açıktır (@PreAuthorize).
+      Sebebi denetim kuralıdır: toplama, şoförün BAĞIMSIZ sayımıdır. Başka bir
+      rolün bu uçlara erişmesi, sayımın bağımsızlığını bozardı.
+    */
+
     // Şoförün, kendisine atanmış bir TOPLAMA görevi için görebileceği güvenli plan detayını döner.
+    @PreAuthorize("hasRole('SOFOR')")
     @GetMapping("/plans/{planId}")
     public ResponseEntity<?> getCollectionPlanDetail(
             @PathVariable Long planId,
@@ -35,6 +43,7 @@ public class CollectionController {
     }
 
     // Şoförün Teslimat Görevi ekranında göreceği, kendi topladığı ürün/miktar özetini döner.
+    @PreAuthorize("hasRole('SOFOR')")
     @GetMapping("/plans/{planId}/delivery-summary")
     public ResponseEntity<?> getDeliverySummary(
             @PathVariable Long planId,
@@ -44,6 +53,7 @@ public class CollectionController {
     }
 
     // Bir planın tüm ürünleri için toplama kaydı oluşturur.
+    @PreAuthorize("hasRole('SOFOR')")
     @PostMapping("/plan")
     public ResponseEntity<?> createCollectionsForPlan(@Valid @RequestBody CollectionPlanRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)

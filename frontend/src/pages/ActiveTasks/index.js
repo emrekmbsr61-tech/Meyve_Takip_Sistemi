@@ -12,8 +12,9 @@ import { useFocusEffect } from "@react-navigation/native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { getNeedLists } from "../../services/needListService";
-import { getTasks } from "../../services/taskService";
+import { completeManualTask, getTasks } from "../../services/taskService";
 import { addNotificationListener } from "../../services/websocketService";
+import CountdownText from "../../components/CountdownText";
 import SoforTaskList from "./SoforTaskList";
 import MudurTaskList from "./MudurTaskList";
 
@@ -86,6 +87,13 @@ function MalKabulActiveTasks({
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
+  /*
+    Müdürün elle atadığı serbest görevler (bkz. TaskType.GENEL).
+    Mal Kabul kartlarından ayrı tutulur: bunların planı yoktur, ekranı da yoktur;
+    yalnızca "ne yapılacak + ne kadar süre kaldı" bilgisini taşırlar.
+  */
+  const [generalTasks, setGeneralTasks] = useState([]);
+
   // ADMIN tüm planları salt okunur görür; işlem yapamaz (Mal Kabulü Aç gizlenir).
   const isReadOnly = currentUser.role === "ADMIN";
 
@@ -138,6 +146,8 @@ function MalKabulActiveTasks({
         const needLists = await getNeedLists();
         const openNeeds = needLists.filter(isOpenNeed);
         setTasks(groupByPlan(openNeeds));
+        // ADMIN'e hiç görev atanmaz; bu liste onda her zaman boştur.
+        setGeneralTasks([]);
         return;
       }
 
@@ -146,8 +156,15 @@ function MalKabulActiveTasks({
         getTasks(currentUser.id),
       ]);
 
+      const safeTasks = Array.isArray(myTasks) ? myTasks : [];
+
+      // Müdürün elle atadığı, henüz tamamlanmamış görevler.
+      setGeneralTasks(
+        safeTasks.filter((task) => task.taskType === "GENEL" && task.status !== "COMPLETED")
+      );
+
       const kabulPlanIds = new Set(
-        (Array.isArray(myTasks) ? myTasks : [])
+        safeTasks
           .filter((task) => task.taskType === "ACCEPTANCE" && task.status !== "COMPLETED")
           .map((task) => task.planId)
       );
@@ -162,6 +179,7 @@ function MalKabulActiveTasks({
       setTasks(groupByPlan(openNeeds));
     } catch (error) {
       setTasks([]);
+      setGeneralTasks([]);
       setErrorMessage(
         error.message || "Görevler alınamadı."
       );
@@ -191,6 +209,8 @@ function MalKabulActiveTasks({
     "TESLIMAT_GOREVI_ATANDI",
     "KABUL_GOREVI_ATANDI",
     "GOREV_SURESI_ASILDI",
+    // Müdürün elle atadığı görev; ekran açıkken bile anında listeye düşmeli.
+    "GOREV_ATANDI",
   ];
 
   useEffect(() => {
@@ -203,6 +223,26 @@ function MalKabulActiveTasks({
     return unsubscribe;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadTasks]);
+
+  /*
+    Müdürün atadığı görevi tamamlar. Başarılı olursa liste yeniden çekilir ve
+    görev listeden düşer; müdüre de anlık bildirim gider (backend tarafında).
+  */
+  const [completingTaskId, setCompletingTaskId] = useState(null);
+
+  const completeTask = async (task) => {
+    try {
+      setCompletingTaskId(task.id);
+      setErrorMessage("");
+
+      await completeManualTask(task.id, currentUser.id);
+      await loadTasks();
+    } catch (error) {
+      setErrorMessage(error.message || "Görev tamamlanamadı.");
+    } finally {
+      setCompletingTaskId(null);
+    }
+  };
 
   // Göreve basılınca doğrudan o planın Mal Kabul ekranı açılır.
   const openTask = (task) => {
@@ -263,10 +303,63 @@ function MalKabulActiveTasks({
         </View>
       ) : null}
 
-      {/* Hata yok fakat açık plan yoksa */}
+      {/*
+        Müdürün elle atadığı görevler.
+        Mal Kabul kartlarının ÜSTÜNDE gösterilir: bunların son teslim süresi
+        vardır ve gecikince otomatik OVERDUE olur, bu yüzden ilk göze çarpması
+        gereken bilgi budur. Planları olmadığı için "Plan #" bilgisi yazılmaz.
+      */}
+      {!loading && !errorMessage && generalTasks.length > 0 ? (
+        <View style={styles.assignedSection}>
+          <Text style={styles.assignedSectionTitle}>Size Atanan Görevler</Text>
+
+          {generalTasks.map((task) => (
+            <View key={task.id} style={styles.assignedCard}>
+              <View style={styles.assignedCardTop}>
+                <View style={styles.iconBox}>
+                  <Ionicons name="clipboard-outline" size={26} color={colors.green} />
+                </View>
+
+                <View style={styles.titleArea}>
+                  <Text style={styles.taskTitle}>{task.title || "Görev"}</Text>
+                  <CountdownText dueDate={task.dueDate} style={styles.assignedRemaining} />
+                </View>
+
+                {task.status === "OVERDUE" ? (
+                  <View style={styles.overdueBadge}>
+                    <Text style={styles.overdueText}>Gecikti</Text>
+                  </View>
+                ) : null}
+              </View>
+
+              {/* Süresi geçmiş olsa bile görev tamamlanabilir; gecikme kaydı zaten düşülmüştür. */}
+              <Pressable
+                style={[
+                  styles.completeButton,
+                  completingTaskId === task.id && styles.completeButtonDisabled,
+                ]}
+                onPress={() => completeTask(task)}
+                disabled={completingTaskId === task.id}
+              >
+                <Ionicons name="checkmark-circle-outline" size={19} color={colors.green} />
+                <Text style={styles.completeButtonText}>
+                  {completingTaskId === task.id ? "Kaydediliyor..." : "Tamamlandı olarak işaretle"}
+                </Text>
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {/*
+        Hata yok fakat hiçbir görev yoksa.
+        generalTasks da kontrol edilir: atanmış bir görev varken "Açık görev yok"
+        yazması yanıltıcı olurdu.
+      */}
       {!loading &&
       !errorMessage &&
-      tasks.length === 0 ? (
+      tasks.length === 0 &&
+      generalTasks.length === 0 ? (
         <View style={styles.emptyCard}>
           <Ionicons
             name="checkmark-circle-outline"
@@ -538,5 +631,66 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 16,
     fontWeight: "800",
+  },
+
+  assignedSection: {
+    marginBottom: 18,
+  },
+
+  assignedSectionTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: "800",
+    marginBottom: 9,
+  },
+
+  assignedCard: {
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 16,
+    padding: 13,
+    marginBottom: 9,
+  },
+
+  assignedCardTop: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  completeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    borderWidth: 1,
+    borderColor: colors.green,
+    borderRadius: 12,
+    paddingVertical: 11,
+    marginTop: 12,
+  },
+
+  completeButtonDisabled: { opacity: 0.6 },
+
+  completeButtonText: { color: colors.green, fontWeight: "800", fontSize: 14 },
+
+  assignedRemaining: {
+    color: colors.muted,
+    fontSize: 13,
+    marginTop: 3,
+    fontWeight: "600",
+  },
+
+  overdueBadge: {
+    backgroundColor: "#FDECEC",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+
+  overdueText: {
+    color: colors.red,
+    fontWeight: "800",
+    fontSize: 12,
   },
 });

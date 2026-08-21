@@ -16,10 +16,12 @@ import {
   getPendingPurchasePlans,
   getPurchasePlanDetail,
 } from "../../services/purchaseService";
+import { addExtraItemsToPlan } from "../../services/needListService";
 import { getActiveSuppliers } from "../../services/supplierService";
 import { addNotificationListener } from "../../services/websocketService";
 import PurchaseItemRow from "./PurchaseItemRow";
 import SupplierPickerModal, { formatSupplierLabel } from "./SupplierPickerModal";
+import AddExtraProductModal from "./AddExtraProductModal";
 
 const colors = {
   green: "#2E7D32",
@@ -85,6 +87,15 @@ export default function PurchaseManagement({ currentUser }) {
   */
   const [selectedSupplierId, setSelectedSupplierId] = useState(null);
   const [supplierPickerVisible, setSupplierPickerVisible] = useState(false);
+
+  /*
+    Ekstra ürün ekleme penceresi. Müdür, alımı girmeden önce planda eksik kalan
+    bir ürünü buradan ekleyebilir; yeni bir plan AÇILMAZ, aynı planId'ye yeni
+    ürün satırları eklenir (bkz. NeedListService.addExtraItemsToPlan).
+  */
+  const [extraModalVisible, setExtraModalVisible] = useState(false);
+  const [extraSaving, setExtraSaving] = useState(false);
+  const [extraError, setExtraError] = useState("");
 
   // ADMIN tüm bekleyen planları salt okunur izler; alım kaydedemez.
   const isReadOnly = currentUser.role === "ADMIN";
@@ -282,6 +293,29 @@ export default function PurchaseManagement({ currentUser }) {
     }
   };
 
+  /*
+    Seçili plana ekstra ürün ekler ve planı yeniden açar.
+    Yeniden açmak şart: yeni ürün de alım formunda görünmeli, aksi halde
+    "planın tüm ürünleri birlikte gönderilmelidir" kuralına takılırdı.
+  */
+  const saveExtraItems = async (items) => {
+    if (items.length === 0) return;
+
+    try {
+      setExtraSaving(true);
+      setExtraError("");
+
+      await addExtraItemsToPlan(selectedPlanId, { managerId: currentUser.id, items });
+
+      setExtraModalVisible(false);
+      await openPlan(selectedPlanId, selectedStoreName);
+    } catch (error) {
+      setExtraError(error.message);
+    } finally {
+      setExtraSaving(false);
+    }
+  };
+
   const selectedSupplier = suppliers.find((supplier) => supplier.id === selectedSupplierId);
 
   if (view === "detail") {
@@ -356,6 +390,18 @@ export default function PurchaseManagement({ currentUser }) {
 
         {loading ? <ActivityIndicator color={colors.green} /> : null}
 
+        {/*
+          Ekstra ürün ekleme: ürün listesinin ÜSTÜNDE durur, çünkü müdürün
+          önce "eksik bir şey var mı" diye bakıp eklemesi, sonra miktar/fiyat
+          doldurması doğal sıradır. Salt okunur izleyen ADMIN'e gösterilmez.
+        */}
+        {isReadOnly ? null : (
+          <Pressable style={styles.extraButton} onPress={() => setExtraModalVisible(true)}>
+            <Ionicons name="add-circle-outline" size={19} color={colors.green} />
+            <Text style={styles.extraButtonText}>Plana Ekstra Ürün Ekle</Text>
+          </Pressable>
+        )}
+
         {planItems.map((item) => (
           <PurchaseItemRow
             key={item.fruitId}
@@ -372,6 +418,15 @@ export default function PurchaseManagement({ currentUser }) {
           selectedSupplierId={selectedSupplierId}
           onSelect={(supplierId) => setSelectedSupplierId(supplierId)}
           onClose={() => setSupplierPickerVisible(false)}
+        />
+
+        <AddExtraProductModal
+          visible={extraModalVisible}
+          existingFruitIds={planItems.map((item) => item.fruitId)}
+          saving={extraSaving}
+          errorMessage={extraError}
+          onSave={saveExtraItems}
+          onClose={() => setExtraModalVisible(false)}
         />
 
         {isReadOnly ? null : (
@@ -518,4 +573,17 @@ const styles = StyleSheet.create({
   },
   saveButtonDisabled: { opacity: 0.5 },
   saveButtonText: { color: colors.white, fontSize: 16, fontWeight: "800" },
+  extraButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: colors.green,
+    borderRadius: 12,
+    paddingVertical: 12,
+    marginBottom: 12,
+  },
+  extraButtonText: { color: colors.green, fontWeight: "800", fontSize: 14 },
 });

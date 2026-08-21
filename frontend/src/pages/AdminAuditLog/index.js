@@ -15,128 +15,161 @@ import { getAuditLogs } from "../../services/auditLogService";
 
 const colors = {
   green: "#2E7D32",
-  darkGreen: "#1B5E20",
+  greenLight: "#EAF5EC",
   dark: "#17211B",
   background: "#F4F7F4",
   white: "#FFFFFF",
   border: "#DDE7DF",
   muted: "#6B7280",
-  greenLight: "#EAF5EC",
+  red: "#DC2626",
+  redLight: "#FDECEC",
+  orange: "#D97706",
+  orangeLight: "#FFF1DC",
+  blue: "#2563EB",
+  blueLight: "#E8F0FE",
+  purple: "#7C3AED",
+  purpleLight: "#F0EAFE",
 };
 
 // Backend'deki AuditActionType.java ile aynı Türkçe metinler; yalnızca
 // görüntüleme amaçlıdır, backend'e hiçbir istek göndermez.
 const ACTION_TYPE_LABELS = {
-  USER_LOGIN: "Kullanıcı giriş yaptı",
-  USER_LOGIN_FAILED: "Kullanıcı giriş yapamadı",
-  NEED_LIST_CREATED: "İhtiyaç listesi oluşturuldu",
-  NEED_LIST_UPDATED: "İhtiyaç listesi güncellendi",
-  NEED_LIST_DELETED: "İhtiyaç listesi silindi",
-  PURCHASE_CREATED: "Alım kaydı oluşturuldu",
-  PURCHASE_FAILED: "Alım kaydı başarısız oldu",
-  COLLECTION_CREATED: "Toplama kaydı oluşturuldu",
-  ACCEPTANCE_CREATED: "Mal kabul kaydı oluşturuldu",
-  TASK_COMPLETED: "Görev tamamlandı",
+  USER_LOGIN: "Giriş yaptı",
+  USER_LOGIN_FAILED: "Giriş yapamadı",
+  USER_LOGOUT: "Çıkış yaptı",
+  NEED_LIST_CREATED: "İhtiyaç oluşturdu",
+  NEED_LIST_UPDATED: "İhtiyaç güncelledi",
+  NEED_LIST_DELETED: "İhtiyaç sildi",
+  PURCHASE_CREATED: "Alım kaydetti",
+  PURCHASE_FAILED: "Alım başarısız",
+  COLLECTION_CREATED: "Toplama kaydetti",
+  ACCEPTANCE_CREATED: "Mal kabul yaptı",
+  TASK_COMPLETED: "Görev tamamladı",
   TASK_ASSIGNED: "Görev atandı",
-  DELIVERY_PLAN_CREATED: "Teslimat planı oluşturuldu",
-  DELIVERY_PLAN_CANCELLED: "Teslimat planı iptal edildi",
+  DELIVERY_PLAN_CREATED: "Plan oluşturdu",
+  DELIVERY_PLAN_CANCELLED: "Plan iptal etti",
+  CONSISTENCY_CHECK: "Tutarlılık kontrolü",
+  SYSTEM_CHECK: "Sistem denetimi",
 };
 
 function getActionTypeLabel(actionType) {
   return ACTION_TYPE_LABELS[actionType] || actionType || "Bilinmeyen işlem";
 }
 
-/*
-  Backend'in entityType alanı Java sınıf adıdır (örn. "TaskAssignment",
-  "NeedList") — kullanıcıya ham hâliyle gösterilmez, burada Türkçeleştirilir.
-  Eşleşme bulunamazsa (yeni bir entity eklenip burası unutulursa bile ekran
-  çökmesin diye) olduğu gibi gösterilir.
-*/
-const ENTITY_TYPE_LABELS = {
-  User: "Kullanıcı",
-  NeedList: "İhtiyaç",
-  DeliveryPlan: "Plan",
-  Purchase: "Alım",
-  Collection: "Toplama",
-  TaskAssignment: "Görev",
-  Acceptance: "Mal Kabul",
+const STATUS_STYLE = {
+  CRITICAL: { color: colors.red, label: "Kritik" },
+  ERROR: { color: colors.red, label: "Hata" },
+  WARNING: { color: colors.orange, label: "Uyarı" },
+  SUCCESS: { color: colors.green, label: "Normal" },
 };
 
-function getEntityTypeLabel(entityType) {
-  return ENTITY_TYPE_LABELS[entityType] || entityType;
+function getStatusStyle(status) {
+  return STATUS_STYLE[status] || { color: colors.border, label: null };
 }
 
 /*
-  İşlem türü önekine göre kaydın hangi kategoriye ait olduğunu belirler.
-  Sıra önemlidir: bir kayıt yalnızca ilk eşleşen kategoriye girer, hiçbir
-  kategoriye girmeyenler "Diğer İşlemler" altında toplanır.
+  ============================ EKRANIN YAPISI ============================
+  İKİ SEVİYE + PLAN GRUPLAMASI:
+
+    1) Kayıt türü seçimi : "Neye bakmak istiyorsun?" - kısa bir menü.
+    2) Kayıtlar          : seçilen türün kayıtları, AYNI PLANA AİT OLANLAR
+                           TEK BİR KART ALTINDA toplanmış hâlde.
+
+  Neden plan gruplaması: Bir plan boyunca aynı planId ile onlarca kayıt
+  oluşuyor (her ürün için ihtiyaç, görev atamaları, alım, toplama, her ürün
+  için tutarlılık kontrolü...). Bunlar düz bir listede alt alta dağıldığında
+  hangi kaydın hangi işe ait olduğu kaybolur. Artık bir planın bütün hikâyesi
+  tek kartın içinde durur.
+  ========================================================================
 */
-const CATEGORIES = [
+const GROUPS = [
   {
-    key: "USER",
-    title: "Kullanıcı İşlemleri",
-    match: (type) => type.startsWith("USER_"),
+    key: "PROBLEM",
+    title: "Kritik ve Hatalar",
+    description: "Kayıp şüphesi ve başarısız işlemler",
+    icon: "alert-circle-outline",
+    color: colors.red,
+    background: colors.redLight,
+    match: (log) => log.status === "CRITICAL" || log.status === "ERROR",
+  },
+  {
+    key: "WARNING",
+    title: "Uyarılar",
+    description: "Miktar farkları ve süresi geçen görevler",
+    icon: "warning-outline",
+    color: colors.orange,
+    background: colors.orangeLight,
+    match: (log) => log.status === "WARNING",
+  },
+  {
+    key: "FLOW",
+    title: "Alım, Toplama ve Mal Kabul",
+    description: "Sahada yapılan işlemler",
+    icon: "swap-horizontal-outline",
+    color: colors.green,
+    background: colors.greenLight,
+    match: (log) =>
+      startsWithAny(log.actionType, ["PURCHASE_", "COLLECTION_", "ACCEPTANCE_"]),
   },
   {
     key: "NEED_PLAN",
-    title: "İhtiyaç ve Plan İşlemleri",
-    match: (type) => type.startsWith("NEED_LIST_") || type.startsWith("DELIVERY_PLAN_"),
-  },
-  {
-    key: "PURCHASE_FLOW",
-    title: "Alım, Toplama ve Mal Kabul",
-    match: (type) =>
-      type.startsWith("PURCHASE_") || type.startsWith("COLLECTION_") || type.startsWith("ACCEPTANCE_"),
+    title: "İhtiyaç ve Planlar",
+    description: "Oluşturulan, güncellenen ve iptal edilen planlar",
+    icon: "clipboard-outline",
+    color: colors.blue,
+    background: colors.blueLight,
+    match: (log) => startsWithAny(log.actionType, ["NEED_LIST_", "DELIVERY_PLAN_"]),
   },
   {
     key: "TASK",
-    title: "Görev İşlemleri",
-    match: (type) => type.startsWith("TASK_"),
+    title: "Görevler",
+    description: "Atanan ve tamamlanan görevler",
+    icon: "time-outline",
+    color: colors.purple,
+    background: colors.purpleLight,
+    match: (log) => startsWithAny(log.actionType, ["TASK_"]),
   },
   {
-    key: "OTHER",
-    title: "Diğer İşlemler",
+    key: "USER",
+    title: "Kullanıcı İşlemleri",
+    description: "Giriş denemeleri ve hesap hareketleri",
+    icon: "person-outline",
+    color: colors.dark,
+    background: colors.background,
+    match: (log) => startsWithAny(log.actionType, ["USER_"]),
+  },
+  {
+    key: "SYSTEM",
+    title: "Sistem Denetimleri",
+    description: "Otomatik tutarlılık ve süre kontrolleri",
+    icon: "shield-checkmark-outline",
+    color: colors.muted,
+    background: colors.background,
+    match: (log) =>
+      log.actionType === "CONSISTENCY_CHECK" || log.actionType === "SYSTEM_CHECK",
+  },
+  {
+    key: "ALL",
+    title: "Tüm Kayıtlar",
+    description: "Sistemdeki bütün işlemler",
+    icon: "list-outline",
+    color: colors.green,
+    background: colors.greenLight,
     match: () => true,
   },
 ];
 
-function getCategoryKey(actionType) {
+function startsWithAny(actionType, prefixes) {
   const type = actionType || "";
-  const category = CATEGORIES.find((item) => item.match(type));
-  return category ? category.key : "OTHER";
+  return prefixes.some((prefix) => type.startsWith(prefix));
 }
 
-// "2026-08-05T16:09:03" -> "05.08.2026 16:09"
-function formatDate(value) {
-  if (!value) return "Tarih yok";
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-
-  const pad = (n) => String(n).padStart(2, "0");
-
-  return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()} ${pad(
-    date.getHours()
-  )}:${pad(date.getMinutes())}`;
-}
-
-// Önem derecesi filtresi seçenekleri (backend AuditStatus değerleriyle aynı).
-const STATUS_FILTERS = [
-  { key: "ALL", label: "Tümü" },
-  { key: "CRITICAL", label: "Kritik" },
-  { key: "ERROR", label: "Hata" },
-  { key: "WARNING", label: "Uyarı" },
-  { key: "SUCCESS", label: "Normal" },
-];
-
-// Tarih aralığı filtresi seçenekleri.
 const DATE_FILTERS = [
   { key: "ALL", label: "Tüm zamanlar" },
   { key: "TODAY", label: "Bugün" },
   { key: "WEEK", label: "Son 7 gün" },
 ];
 
-// Seçilen tarih filtresine göre "bu tarihten sonrası" sınırını üretir.
 function getDateLimit(dateFilter) {
   if (dateFilter === "TODAY") {
     const start = new Date();
@@ -154,27 +187,80 @@ function getDateLimit(dateFilter) {
   return null;
 }
 
+// "2026-08-05T16:09:03" -> "05.08.2026 16:09"
+function formatDate(value) {
+  if (!value) return "Tarih yok";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  const pad = (n) => String(n).padStart(2, "0");
+
+  return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()} ${pad(
+    date.getHours()
+  )}:${pad(date.getMinutes())}`;
+}
+
+// Yalnızca saat (plan kartının içindeki satırlarda tarih zaten üstte yazıyor).
+function formatTime(value) {
+  if (!value) return "";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/*
+  Bir plandaki BİREBİR AYNI kayıtları tek satırda toplar.
+
+  Neden: beş ürünlü bir plan oluşturulduğunda "İhtiyaç oluşturdu" beş kez
+  yazılıyor ve beşi de aynı kişiye ait. Bunları alt alta beş satır olarak
+  göstermek bilgi vermiyor, yalnızca listeyi uzatıyor. Artık tek satır
+  görünür, yanında "×5" yazar.
+
+  Sadece işlem türü VE açıklaması aynı olanlar birleştirilir; açıklamalar
+  farklıysa (ör. her ürün için ayrı tutarlılık bulgusu) ayrı ayrı kalır.
+*/
+function collapseIdentical(items) {
+  const result = [];
+  const seen = new Map();
+
+  for (const log of items) {
+    const key = `${log.actionType}|${log.description || ""}`;
+    const existing = seen.get(key);
+
+    if (existing) {
+      existing.count += 1;
+      continue;
+    }
+
+    const entry = { log, count: 1 };
+    seen.set(key, entry);
+    result.push(entry);
+  }
+
+  return result;
+}
+
+// Tek seferde gösterilecek plan kartı sayısı.
+const PAGE_SIZE = 10;
+
 export default function AdminAuditLog() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [searchText, setSearchText] = useState("");
-  const [entityIdText, setEntityIdText] = useState("");
 
-  /*
-    Şartnamede istenen detaylı filtreler.
-    statusFilter: log'un önem derecesi (backend AuditStatus alanı).
-    dateFilter: kayıt tarihine göre hızlı aralık seçimi.
-    Her ikisi de "ALL" iken hiçbir kısıtlama uygulanmaz.
-  */
-  const [statusFilter, setStatusFilter] = useState("ALL");
+  // null iken tür seçim ekranı, dolu iken o türün kayıtları gösterilir.
+  const [activeGroupKey, setActiveGroupKey] = useState(null);
+
+  const [searchText, setSearchText] = useState("");
   const [dateFilter, setDateFilter] = useState("ALL");
 
-  // Aynı anda yalnızca bir kategori açık kalır; null ise hiçbiri açık değildir.
-  const [expandedCategory, setExpandedCategory] = useState(null);
-
-  // Aynı anda yalnızca bir kaydın "Detayları Gör" alanı açık kalır.
-  const [expandedLogId, setExpandedLogId] = useState(null);
+  // Aynı anda yalnızca bir plan kartı açık kalır.
+  const [expandedPlanId, setExpandedPlanId] = useState(null);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const loadLogs = useCallback(async () => {
     try {
@@ -184,11 +270,7 @@ export default function AdminAuditLog() {
       const data = await getAuditLogs();
 
       // En yeni işlem en üstte görünsün.
-      const sorted = [...data].sort(
-        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
-      );
-
-      setLogs(sorted);
+      setLogs([...data].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
     } catch (error) {
       setErrorMessage(error.message);
     } finally {
@@ -202,283 +284,395 @@ export default function AdminAuditLog() {
     }, [loadLogs])
   );
 
-  const filteredLogs = useMemo(() => {
+  const groupCounts = useMemo(() => {
+    const counts = {};
+
+    for (const group of GROUPS) {
+      counts[group.key] = logs.filter(group.match).length;
+    }
+
+    return counts;
+  }, [logs]);
+
+  const activeGroup = GROUPS.find((group) => group.key === activeGroupKey);
+
+  // Seçilen türün, arama ve tarihe göre süzülmüş kayıtları.
+  const groupLogs = useMemo(() => {
+    if (!activeGroup) {
+      return [];
+    }
+
     const search = searchText.trim().toLowerCase();
-    const idSearch = entityIdText.trim();
     const dateLimit = getDateLimit(dateFilter);
 
     return logs.filter((log) => {
-      // Plan numarası veya kayıt id'si ile arama (ikisinden biri tutarsa yeter).
-      if (idSearch) {
-        const matchesPlan = String(log.planId ?? "") === idSearch;
-        const matchesEntity = String(log.entityId ?? "") === idSearch;
+      if (!activeGroup.match(log)) return false;
+      if (dateLimit && new Date(log.createdAt) < dateLimit) return false;
 
-        if (!matchesPlan && !matchesEntity) {
-          return false;
-        }
-      }
-
-      // Önem derecesi filtresi.
-      if (statusFilter !== "ALL" && log.status !== statusFilter) {
-        return false;
-      }
-
-      // Tarih aralığı filtresi.
-      if (dateLimit && new Date(log.createdAt) < dateLimit) {
-        return false;
-      }
-
-      // Kullanıcı adı veya açıklama içinde serbest metin araması.
       if (search) {
-        const haystack = `${log.userFullName || ""} ${log.description || ""}`.toLowerCase();
-        if (!haystack.includes(search)) {
-          return false;
-        }
+        const haystack = [
+          log.userFullName,
+          log.description,
+          getActionTypeLabel(log.actionType),
+          log.planId != null ? String(log.planId) : "",
+          log.entityId != null ? String(log.entityId) : "",
+        ]
+          .join(" ")
+          .toLowerCase();
+
+        if (!haystack.includes(search)) return false;
       }
 
       return true;
     });
-  }, [logs, searchText, entityIdText, statusFilter, dateFilter]);
+  }, [logs, activeGroup, searchText, dateFilter]);
 
   /*
-    filteredLogs zaten en yeniden en eskiye sıralı olduğu için (bkz. loadLogs),
-    kategorilere ayırırken bu sıra korunur; her kategori kendi içinde de
-    otomatik olarak en yeniden en eskiye sıralı kalır.
+    Kayıtları plan bazında toplar. Plana bağlı OLMAYAN kayıtlar (giriş
+    denemeleri, müdürün elle atadığı serbest görevler) ayrı bir listede
+    tutulur; onlar için sahte bir plan kartı üretmek yanıltıcı olurdu.
   */
-  const categorizedLogs = useMemo(() => {
-    return CATEGORIES.map((category) => ({
-      key: category.key,
-      title: category.title,
-      logs: filteredLogs.filter((log) => getCategoryKey(log.actionType) === category.key),
-    }));
-  }, [filteredLogs]);
+  const { planGroups, planlessLogs } = useMemo(() => {
+    const byPlan = new Map();
+    const planless = [];
 
-  function toggleCategory(key) {
-    setExpandedCategory((current) => (current === key ? null : key));
-    // Kategori değişince önceki kaydın açık detay alanı kafa karıştırmasın diye kapatılır.
-    setExpandedLogId(null);
+    for (const log of groupLogs) {
+      if (log.planId == null) {
+        planless.push(log);
+        continue;
+      }
+
+      if (!byPlan.has(log.planId)) {
+        byPlan.set(log.planId, []);
+      }
+
+      byPlan.get(log.planId).push(log);
+    }
+
+    const groups = Array.from(byPlan.entries())
+      .map(([planId, items]) => ({
+        planId,
+        items,
+        // groupLogs en yeniden eskiye sıralı olduğu için ilk kayıt en yenisidir.
+        latestDate: items[0]?.createdAt,
+        problemCount: items.filter(
+          (log) => log.status === "CRITICAL" || log.status === "ERROR"
+        ).length,
+        warningCount: items.filter((log) => log.status === "WARNING").length,
+      }))
+      .sort((a, b) => b.planId - a.planId);
+
+    return { planGroups: groups, planlessLogs: planless };
+  }, [groupLogs]);
+
+  const openGroup = (key) => {
+    setActiveGroupKey(key);
+    setSearchText("");
+    setDateFilter("ALL");
+    setExpandedPlanId(null);
+    setVisibleCount(PAGE_SIZE);
+  };
+
+  /* ---------------- 1. SEVİYE: kayıt türü seçimi ---------------- */
+  if (!activeGroup) {
+    return (
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <Text style={styles.intro}>
+          Bakmak istediğiniz kayıt türünü seçin. Toplam {logs.length} işlem kaydı var.
+        </Text>
+
+        {loading ? <ActivityIndicator color={colors.green} style={{ marginTop: 12 }} /> : null}
+
+        {!loading && errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+
+        {!loading && !errorMessage
+          ? GROUPS.map((group) => {
+              const count = groupCounts[group.key] || 0;
+
+              return (
+                <Pressable
+                  key={group.key}
+                  style={({ pressed }) => [styles.groupCard, pressed && styles.pressed]}
+                  onPress={() => openGroup(group.key)}
+                >
+                  <View style={[styles.groupIconBox, { backgroundColor: group.background }]}>
+                    <Ionicons name={group.icon} size={22} color={group.color} />
+                  </View>
+
+                  <View style={styles.groupTextArea}>
+                    <Text style={styles.groupTitle}>{group.title}</Text>
+                    <Text style={styles.groupDescription}>{group.description}</Text>
+                  </View>
+
+                  <View style={styles.groupRight}>
+                    <Text style={[styles.groupCount, count > 0 && { color: group.color }]}>
+                      {count}
+                    </Text>
+                    <Ionicons name="chevron-forward" size={19} color="#B8C3BA" />
+                  </View>
+                </Pressable>
+              );
+            })
+          : null}
+      </ScrollView>
+    );
   }
 
-  function toggleLogDetail(id) {
-    setExpandedLogId((current) => (current === id ? null : id));
-  }
+  /* ---------------- 2. SEVİYE: plan bazında kayıtlar ---------------- */
+  const visiblePlanGroups = planGroups.slice(0, visibleCount);
+
+  // Bir plan kartının içindeki kayıt satırlarını çizer.
+  const renderLogRows = (items) =>
+    collapseIdentical(items).map((entry, index) => {
+      const { log, count } = entry;
+      const statusStyle = getStatusStyle(log.status);
+
+      return (
+        <View key={`${log.id}-${index}`} style={styles.logRow}>
+          <View style={[styles.statusDot, { backgroundColor: statusStyle.color }]} />
+
+          <View style={styles.logRowText}>
+            <Text style={styles.logRowTitle}>
+              {getActionTypeLabel(log.actionType)}
+              {count > 1 ? <Text style={styles.repeatCount}> ×{count}</Text> : null}
+            </Text>
+
+            {log.description ? (
+              <Text style={styles.logRowDescription}>{log.description}</Text>
+            ) : null}
+
+            <Text style={styles.logRowMeta}>
+              {log.userFullName || "Sistem"} · {formatTime(log.createdAt)}
+            </Text>
+          </View>
+        </View>
+      );
+    });
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.heading}>İşlem Kayıtları</Text>
+      <Pressable style={styles.backRow} onPress={() => setActiveGroupKey(null)}>
+        <Ionicons name="arrow-back" size={19} color={colors.green} />
+        <Text style={styles.backText}>Kayıt türleri</Text>
+      </Pressable>
 
-      <Text style={styles.subheading}>
-        Sistemde yapılan tüm işlemlerin kaydını buradan izleyebilirsiniz.
+      <Text style={styles.groupHeading}>{activeGroup.title}</Text>
+      <Text style={styles.groupSubheading}>
+        {planGroups.length} plan · {groupLogs.length} kayıt
       </Text>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Kullanıcı veya açıklamada ara..."
-        placeholderTextColor={colors.muted}
-        value={searchText}
-        onChangeText={setSearchText}
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder="Plan no veya kayıt id ile ara..."
-        placeholderTextColor={colors.muted}
-        value={entityIdText}
-        onChangeText={setEntityIdText}
-        keyboardType="numeric"
-      />
-
-      {/* Önem derecesi filtresi */}
-      <Text style={styles.filterLabel}>Durum</Text>
-      <View style={styles.filterRow}>
-        {STATUS_FILTERS.map((filter) => (
-          <Pressable
-            key={filter.key}
-            onPress={() => setStatusFilter(filter.key)}
-            style={[
-              styles.filterChip,
-              statusFilter === filter.key && styles.filterChipActive,
-            ]}
-          >
-            <Text
-              style={[
-                styles.filterChipText,
-                statusFilter === filter.key && styles.filterChipTextActive,
-              ]}
-            >
-              {filter.label}
-            </Text>
-          </Pressable>
-        ))}
+      <View style={styles.searchBox}>
+        <Ionicons name="search" size={17} color={colors.muted} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Kullanıcı, işlem veya plan no ara..."
+          placeholderTextColor={colors.muted}
+          value={searchText}
+          onChangeText={(value) => {
+            setSearchText(value);
+            setVisibleCount(PAGE_SIZE);
+          }}
+        />
       </View>
 
-      {/* Tarih aralığı filtresi */}
-      <Text style={styles.filterLabel}>Tarih</Text>
-      <View style={styles.filterRow}>
-        {DATE_FILTERS.map((filter) => (
-          <Pressable
-            key={filter.key}
-            onPress={() => setDateFilter(filter.key)}
-            style={[
-              styles.filterChip,
-              dateFilter === filter.key && styles.filterChipActive,
-            ]}
-          >
-            <Text
-              style={[
-                styles.filterChipText,
-                dateFilter === filter.key && styles.filterChipTextActive,
-              ]}
-            >
-              {filter.label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+      <View style={styles.chipRow}>
+        {DATE_FILTERS.map((filter) => {
+          const active = dateFilter === filter.key;
 
-      <Text style={styles.resultCount}>{filteredLogs.length} kayıt listeleniyor</Text>
+          return (
+            <Pressable
+              key={filter.key}
+              style={[styles.chip, active && styles.chipActive]}
+              onPress={() => {
+                setDateFilter(filter.key);
+                setVisibleCount(PAGE_SIZE);
+              }}
+            >
+              <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                {filter.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
 
       {loading ? <ActivityIndicator color={colors.green} style={{ marginTop: 10 }} /> : null}
 
-      {!loading && errorMessage ? (
-        <Text style={styles.errorText}>{errorMessage}</Text>
-      ) : null}
-
-      {!loading && !errorMessage && filteredLogs.length === 0 ? (
+      {!loading && groupLogs.length === 0 ? (
         <View style={styles.empty}>
-          <Ionicons name="document-text-outline" size={42} color={colors.muted} />
+          <Ionicons name="document-text-outline" size={38} color={colors.muted} />
           <Text style={styles.emptyTitle}>Kayıt bulunamadı</Text>
+          <Text style={styles.emptyText}>Arama veya tarih filtresini değiştirmeyi deneyin.</Text>
         </View>
       ) : null}
 
-      {!loading && !errorMessage && filteredLogs.length > 0
-        ? categorizedLogs.map((category) => {
-            const isExpanded = expandedCategory === category.key;
+      {/* Plan kartları: bir planın bütün hikâyesi tek kartın içinde */}
+      {!loading &&
+        visiblePlanGroups.map((plan) => {
+          const isOpen = expandedPlanId === plan.planId;
 
-            return (
-              <View key={category.key} style={styles.categoryCard}>
-                <Pressable
-                  style={styles.categoryHeader}
-                  onPress={() => toggleCategory(category.key)}
+          return (
+            <View key={plan.planId} style={styles.planCard}>
+              <Pressable
+                style={styles.planHeader}
+                onPress={() => setExpandedPlanId(isOpen ? null : plan.planId)}
+              >
+                <View
+                  style={[
+                    styles.planIconBox,
+                    {
+                      backgroundColor:
+                        plan.problemCount > 0
+                          ? colors.redLight
+                          : plan.warningCount > 0
+                          ? colors.orangeLight
+                          : colors.greenLight,
+                    },
+                  ]}
                 >
-                  <Text style={styles.categoryTitle}>{category.title}</Text>
+                  <Ionicons
+                    name="document-text-outline"
+                    size={19}
+                    color={
+                      plan.problemCount > 0
+                        ? colors.red
+                        : plan.warningCount > 0
+                        ? colors.orange
+                        : colors.green
+                    }
+                  />
+                </View>
 
-                  <View style={styles.categoryHeaderRight}>
-                    <Text style={styles.categoryCount}>{category.logs.length} kayıt</Text>
+                <View style={styles.planTextArea}>
+                  <Text style={styles.planTitle}>Plan #{plan.planId}</Text>
+                  <Text style={styles.planMeta}>
+                    {plan.items.length} işlem · {formatDate(plan.latestDate)}
+                  </Text>
+                </View>
 
-                    <Ionicons
-                      name={isExpanded ? "chevron-up" : "chevron-down"}
-                      size={18}
-                      color={colors.darkGreen}
-                    />
+                {plan.problemCount > 0 ? (
+                  <View style={[styles.countBadge, { backgroundColor: colors.red }]}>
+                    <Text style={styles.countBadgeText}>{plan.problemCount}</Text>
                   </View>
-                </Pressable>
-
-                {isExpanded ? (
-                  <View style={styles.categoryBody}>
-                    {category.logs.length === 0 ? (
-                      <Text style={styles.categoryEmptyText}>Bu kategoride kayıt yok.</Text>
-                    ) : (
-                      category.logs.map((log) => {
-                        const isDetailOpen = expandedLogId === log.id;
-
-                        return (
-                          /*
-                            3 seviyeli, basit tıklama akışı: Kategori (seviye 1) ->
-                            kayıt satırı (seviye 2) -> "Detayları Gör" (seviye 3).
-                            Kullanıcıya ham backend description'ı (teknik ID'ler,
-                            "Kayıt ID: X" gibi ekler içerebiliyordu) yerine, zaten
-                            var olan userFullName + actionType alanlarından
-                            üretilen sade bir cümle gösterilir. Örnek:
-                            "Emre Kumbasar — Alım kaydı oluşturuldu"
-                          */
-                          <Pressable
-                            key={log.id}
-                            style={styles.card}
-                            onPress={() => toggleLogDetail(log.id)}
-                          >
-                            <Text style={styles.logLine}>
-                              <Text style={styles.logUser}>{log.userFullName || "Sistem"}</Text>
-                              <Text style={styles.logAction}> — {getActionTypeLabel(log.actionType)}</Text>
-                            </Text>
-
-                            <View style={styles.metaRow}>
-                              <Text style={styles.metaText}>{formatDate(log.createdAt)}</Text>
-                              <View style={styles.detailToggle}>
-                                <Text style={styles.detailToggleText}>Detayları Gör</Text>
-                                <Ionicons
-                                  name={isDetailOpen ? "chevron-up" : "chevron-down"}
-                                  size={14}
-                                  color={colors.green}
-                                />
-                              </View>
-                            </View>
-
-                            {isDetailOpen ? (
-                              <View style={styles.detailBox}>
-                                <View style={styles.detailRow}>
-                                  <Text style={styles.detailLabel}>Kim yaptı</Text>
-                                  <Text style={styles.detailValue}>{log.userFullName || "Sistem"}</Text>
-                                </View>
-                                <View style={styles.detailRow}>
-                                  <Text style={styles.detailLabel}>Ne zaman</Text>
-                                  <Text style={styles.detailValue}>{formatDate(log.createdAt)}</Text>
-                                </View>
-                                <View style={styles.detailRow}>
-                                  <Text style={styles.detailLabel}>Sonuç</Text>
-                                  <Text style={styles.detailValue}>{getActionTypeLabel(log.actionType)}</Text>
-                                </View>
-                                {log.entityId != null ? (
-                                  <View style={styles.detailRow}>
-                                    <Text style={styles.detailLabel}>İlgili kayıt</Text>
-                                    <Text style={styles.detailValue}>
-                                      {log.entityType ? `${getEntityTypeLabel(log.entityType)} ` : ""}#{log.entityId}
-                                    </Text>
-                                  </View>
-                                ) : null}
-                              </View>
-                            ) : null}
-                          </Pressable>
-                        );
-                      })
-                    )}
+                ) : plan.warningCount > 0 ? (
+                  <View style={[styles.countBadge, { backgroundColor: colors.orange }]}>
+                    <Text style={styles.countBadgeText}>{plan.warningCount}</Text>
                   </View>
                 ) : null}
-              </View>
-            );
-          })
-        : null}
+
+                <Ionicons
+                  name={isOpen ? "chevron-up" : "chevron-down"}
+                  size={19}
+                  color={colors.muted}
+                />
+              </Pressable>
+
+              {isOpen ? <View style={styles.planBody}>{renderLogRows(plan.items)}</View> : null}
+            </View>
+          );
+        })}
+
+      {/* Plana bağlı olmayan kayıtlar (giriş denemeleri, serbest görevler) */}
+      {!loading && planlessLogs.length > 0 ? (
+        <View style={styles.planCard}>
+          <Pressable
+            style={styles.planHeader}
+            onPress={() => setExpandedPlanId(isPlanlessOpen(expandedPlanId) ? null : "PLANSIZ")}
+          >
+            <View style={[styles.planIconBox, { backgroundColor: colors.background }]}>
+              <Ionicons name="ellipsis-horizontal" size={19} color={colors.muted} />
+            </View>
+
+            <View style={styles.planTextArea}>
+              <Text style={styles.planTitle}>Plana bağlı olmayan işlemler</Text>
+              <Text style={styles.planMeta}>{planlessLogs.length} işlem</Text>
+            </View>
+
+            <Ionicons
+              name={isPlanlessOpen(expandedPlanId) ? "chevron-up" : "chevron-down"}
+              size={19}
+              color={colors.muted}
+            />
+          </Pressable>
+
+          {isPlanlessOpen(expandedPlanId) ? (
+            <View style={styles.planBody}>{renderLogRows(planlessLogs)}</View>
+          ) : null}
+        </View>
+      ) : null}
+
+      {!loading && planGroups.length > visibleCount ? (
+        <Pressable
+          style={styles.moreButton}
+          onPress={() => setVisibleCount((count) => count + PAGE_SIZE)}
+        >
+          <Text style={styles.moreText}>
+            Daha fazla plan göster ({planGroups.length - visibleCount} plan)
+          </Text>
+        </Pressable>
+      ) : null}
     </ScrollView>
   );
 }
 
+// Plansız kayıtlar kartı, plan id'si yerine sabit bir anahtarla açılıp kapanır.
+function isPlanlessOpen(expandedPlanId) {
+  return expandedPlanId === "PLANSIZ";
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: 20, paddingBottom: 40 },
-  heading: { color: colors.dark, fontSize: 24, fontWeight: "800" },
-  subheading: { color: colors.muted, marginTop: 4, marginBottom: 16, lineHeight: 20 },
-  input: {
+  content: { padding: 16, paddingBottom: 32 },
+  intro: { color: colors.muted, fontSize: 13, lineHeight: 19, marginBottom: 14 },
+  errorText: { color: colors.red, fontWeight: "600", marginTop: 10 },
+  pressed: { opacity: 0.7 },
+
+  // 1. seviye
+  groupCard: {
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginBottom: 10,
-    color: colors.dark,
+    borderRadius: 15,
+    padding: 13,
+    marginBottom: 9,
   },
-  errorText: { color: "#C62828", fontWeight: "600", marginTop: 10 },
+  groupIconBox: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  groupTextArea: { flex: 1, paddingRight: 8 },
+  groupTitle: { color: colors.dark, fontSize: 15, fontWeight: "800" },
+  groupDescription: { color: colors.muted, fontSize: 12, marginTop: 3, lineHeight: 16 },
+  groupRight: { flexDirection: "row", alignItems: "center", gap: 6 },
+  groupCount: { color: colors.muted, fontSize: 15, fontWeight: "800" },
 
-  // Filtre alanı
-  filterLabel: {
-    color: colors.muted,
-    fontSize: 12,
-    fontWeight: "700",
-    marginTop: 4,
-    marginBottom: 6,
+  // 2. seviye başlığı
+  backRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12 },
+  backText: { color: colors.green, fontWeight: "700", fontSize: 14 },
+  groupHeading: { color: colors.dark, fontSize: 19, fontWeight: "800" },
+  groupSubheading: { color: colors.muted, fontSize: 12, marginTop: 3, marginBottom: 12 },
+
+  searchBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 13,
+    paddingHorizontal: 13,
+    marginBottom: 10,
   },
-  filterRow: { flexDirection: "row", flexWrap: "wrap", gap: 7, marginBottom: 10 },
-  filterChip: {
+  searchInput: { flex: 1, color: colors.dark, paddingVertical: 11, fontSize: 14 },
+
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 7, marginBottom: 12 },
+  chip: {
     backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: colors.border,
@@ -486,79 +680,81 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
-  filterChipActive: { backgroundColor: colors.green, borderColor: colors.green },
-  filterChipText: { color: colors.muted, fontSize: 12, fontWeight: "700" },
-  filterChipTextActive: { color: colors.white },
-  resultCount: { color: colors.muted, fontSize: 12, marginBottom: 6 },
+  chipActive: { backgroundColor: colors.green, borderColor: colors.green },
+  chipText: { color: colors.muted, fontSize: 12, fontWeight: "700" },
+  chipTextActive: { color: colors.white },
 
-  categoryCard: {
+  // Plan kartı
+  planCard: {
     backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 16,
-    marginTop: 10,
+    borderRadius: 14,
+    marginBottom: 9,
     overflow: "hidden",
   },
-  categoryHeader: {
-    flexDirection: "row",
+  planHeader: { flexDirection: "row", alignItems: "center", gap: 10, padding: 13 },
+  planIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    justifyContent: "center",
   },
-  categoryTitle: { color: colors.dark, fontWeight: "800", fontSize: 15, flexShrink: 1 },
-  categoryHeaderRight: { flexDirection: "row", alignItems: "center", gap: 8 },
-  categoryCount: { color: colors.muted, fontWeight: "600", fontSize: 12 },
-  categoryBody: {
-    paddingHorizontal: 12,
-    paddingBottom: 12,
+  planTextArea: { flex: 1 },
+  planTitle: { color: colors.dark, fontSize: 15, fontWeight: "800" },
+  planMeta: { color: colors.muted, fontSize: 12, marginTop: 3 },
+  countBadge: {
+    minWidth: 24,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  countBadgeText: { color: colors.white, fontSize: 11, fontWeight: "800" },
+
+  planBody: {
     borderTopWidth: 1,
     borderTopColor: colors.border,
+    paddingHorizontal: 13,
+    paddingVertical: 4,
   },
-  categoryEmptyText: {
-    color: colors.muted,
-    fontSize: 13,
-    paddingVertical: 14,
-    textAlign: "center",
+
+  // Plan kartının içindeki tek kayıt satırı
+  logRow: {
+    flexDirection: "row",
+    gap: 9,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0F3F0",
   },
-  card: {
-    backgroundColor: colors.background,
+  statusDot: { width: 7, height: 7, borderRadius: 4, marginTop: 6 },
+  logRowText: { flex: 1 },
+  logRowTitle: { color: colors.dark, fontSize: 13, fontWeight: "800" },
+  repeatCount: { color: colors.muted, fontWeight: "700" },
+  logRowDescription: { color: colors.dark, fontSize: 12, lineHeight: 17, marginTop: 3 },
+  logRowMeta: { color: colors.muted, fontSize: 11, marginTop: 4 },
+
+  moreButton: {
+    alignItems: "center",
+    backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
-    padding: 11,
-    marginTop: 8,
+    borderRadius: 13,
+    paddingVertical: 13,
+    marginTop: 4,
   },
-  logLine: { fontSize: 14, lineHeight: 19 },
-  logUser: { color: colors.dark, fontWeight: "800" },
-  logAction: { color: colors.muted, fontWeight: "600" },
-  metaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 10,
-  },
-  metaText: { color: colors.muted, fontSize: 12, fontWeight: "600" },
-  detailToggle: { flexDirection: "row", alignItems: "center", gap: 3 },
-  detailToggleText: { color: colors.green, fontSize: 12, fontWeight: "700" },
-  detailBox: {
-    marginTop: 10,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    gap: 6,
-  },
-  detailRow: { flexDirection: "row", justifyContent: "space-between" },
-  detailLabel: { color: colors.muted, fontSize: 12, fontWeight: "600" },
-  detailValue: { color: colors.dark, fontSize: 12, fontWeight: "700" },
+  moreText: { color: colors.green, fontWeight: "800", fontSize: 13 },
+
   empty: {
     alignItems: "center",
     backgroundColor: colors.white,
     borderRadius: 18,
-    padding: 28,
+    padding: 26,
     borderWidth: 1,
     borderColor: colors.border,
-    marginTop: 10,
+    marginTop: 6,
   },
-  emptyTitle: { color: colors.dark, fontWeight: "700", marginTop: 10 },
+  emptyTitle: { color: colors.dark, fontWeight: "800", marginTop: 9, fontSize: 15 },
+  emptyText: { color: colors.muted, fontSize: 12, marginTop: 4, textAlign: "center" },
 });

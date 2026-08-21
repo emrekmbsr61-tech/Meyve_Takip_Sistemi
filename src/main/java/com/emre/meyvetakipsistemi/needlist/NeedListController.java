@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 // Frontend'den gelen ihtiyaç listesi isteklerini karşılar.
 @RestController
@@ -25,19 +26,13 @@ public class NeedListController {
         this.needListService = needListService;
     }
 
-    // Yeni ihtiyaç listesi oluşturur.
-    // Not: Bu eski endpoint planId'yi client'tan kabul eder, artık YENİ akış için kullanılmamalı.
-    @PostMapping
-    public NeedListResponse createNeedList(@RequestBody NeedListRequest request) {
-        return needListService.createNeedList(request);
-    }
-
     /*
       YENİ ve güvenli ihtiyaç planı oluşturma endpoint'i.
       Aynı transaction içinde önce bir DeliveryPlan oluşturur, planId'yi backend üretir,
       ardından tüm ürün satırlarını bu planId ile kaydeder. Frontend artık bu endpoint'i
       kullanmalıdır.
     */
+    @PreAuthorize("hasRole('MAGAZA_PERSONELI')")
     @PostMapping("/plan")
     public ResponseEntity<?> createNeedListPlan(@Valid @RequestBody NeedListPlanRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(needListService.createNeedListPlan(request));
@@ -48,12 +43,15 @@ public class NeedListController {
       DeliveryPlan/ihtiyaç planı OLUŞTURMAZ; aynı planId'ye yeni NeedList
       satırları ekler (bkz. NeedListService.addExtraItemsToPlan).
     */
+    // Plana ekstra ürün ekleme müdürün işidir (Alım İşlemleri ekranından yapılır).
+    @PreAuthorize("hasRole('MAGAZA_MUDURU')")
     @PostMapping("/plan/{planId}/items")
     public ResponseEntity<?> addExtraItems(@PathVariable Long planId, @RequestBody AddExtraItemsRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(needListService.addExtraItemsToPlan(planId, request));
     }
 
     // Bir planı (tüm ürünleriyle birlikte) iptal eder. Yalnızca bu planId'ye ait kayıtlar etkilenir.
+    @PreAuthorize("hasRole('MAGAZA_PERSONELI')")
     @DeleteMapping("/plan/{planId}")
     public ResponseEntity<?> cancelNeedListPlan(@PathVariable Long planId, @RequestParam Long userId) {
         needListService.cancelNeedListPlan(planId, userId);
@@ -66,19 +64,8 @@ public class NeedListController {
         return needListService.getAllNeedLists();
     }
 
-    // ID'ye göre ihtiyaç listesi getirir.
-    @GetMapping("/{id}")
-    public NeedListResponse getNeedListById(@PathVariable Long id) {
-        return needListService.getNeedListById(id);
-    }
-
-    // ID'ye göre ihtiyaç listesini siler.
-    @DeleteMapping("/{id}")
-    public void deleteNeedList(@PathVariable Long id) {
-        needListService.deleteNeedList(id);
-    }
-
-    // ID'ye göre ihtiyaç listesini günceller.
+    // ID'ye göre ihtiyaç listesini günceller. Sahiplik kontrolü ayrıca Service'te yapılır.
+    @PreAuthorize("hasAnyRole('MAGAZA_PERSONELI','ADMIN')")
     @PutMapping("/{id}")
     public NeedListResponse updateNeedList(
             @PathVariable Long id,
