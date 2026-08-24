@@ -5,12 +5,18 @@ import lombok.Setter;
 
 import java.util.List;
 
-// Müdürün var olan bir plana ekstra ürün eklemek için gönderdiği istektir.
+/*
+  Var olan bir plana ekstra ürün ekleme isteğidir.
+
+  Hem MAGAZA_MUDURU (Alım İşlemleri ekranından) hem de MAGAZA_PERSONELI
+  (Mevcut İhtiyaçlar ekranından, yalnızca kendi planına) kullanabilir; bu yüzden
+  alan adı "managerId" değil "userId"dir.
+*/
 @Getter
 @Setter
 public class AddExtraItemsRequest {
 
-    private Long managerId;
+    private Long userId;
 
     private List<NeedListPlanItemRequest> items;
 }

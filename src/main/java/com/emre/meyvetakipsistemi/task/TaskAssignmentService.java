@@ -65,8 +65,20 @@ public class TaskAssignmentService {
         this.taskDeadlineCalculator = taskDeadlineCalculator;
     }
 
-    // Bu metodun görevi: Kullanıcıya atanmış mevcut görevleri okumak. Yeni görev oluşturmaz.
+    /*
+      Bu metodun görevi: Kullanıcıya atanmış mevcut görevleri okumak. Yeni görev oluşturmaz.
+
+      Sahiplik kuralı: Herkes yalnızca KENDİ görevlerini okuyabilir (ADMIN hepsini).
+      Önceden userId doğrudan istekten alınıyordu; giriş yapmış herhangi biri
+      adrese başkasının id'sini yazarak onun görevlerini okuyabiliyordu.
+      Kimlik artık doğrulanmış JWT'den karşılaştırılır (bkz. CurrentUserService).
+    */
     public List<TaskAssignmentResponse> getTasks(Long userId) {
+        currentUserService.requireOwnerOrAdmin(
+                userId,
+                "Yalnızca kendi görevlerinizi görüntüleyebilirsiniz."
+        );
+
         return taskRepository.findByAssignedUserIdOrderByDueDateAsc(userId).stream()
                 .map(this::toResponse)
                 .toList();
@@ -267,6 +279,11 @@ public class TaskAssignmentService {
       Yalnızca operasyon personeli döner (mağaza personeli ve şoför). ADMIN ve
       diğer müdürler bilerek dışarıda bırakılır: bu ekran saha görevi atamak
       içindir, yöneticilere görev atamak için değil.
+
+      Ayrıca yalnızca E-POSTASINI DOĞRULAMIŞ kullanıcılar listelenir. Doğrulama
+      yapmamış bir hesap zaten giriş yapamaz (bkz. AuthService.login), dolayısıyla
+      kendisine atanan görevi hiçbir zaman göremez. Önceden bu kişiler de listede
+      çıkıyor ve müdür var olmayan birine görev atayabiliyordu.
     */
     public List<AssignableUserResponse> getAssignableUsers(Long managerId) {
         requireManager(managerId);
@@ -274,7 +291,7 @@ public class TaskAssignmentService {
         List<AssignableUserResponse> result = new ArrayList<>();
 
         for (UserRole role : List.of(UserRole.MAGAZA_PERSONELI, UserRole.SOFOR)) {
-            for (User user : userRepository.findByRole(role)) {
+            for (User user : userRepository.findByRoleAndIsVerifiedTrue(role)) {
                 result.add(new AssignableUserResponse(
                         user.getId(),
                         user.getFullName(),

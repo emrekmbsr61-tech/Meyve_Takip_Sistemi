@@ -19,6 +19,7 @@ import com.emre.meyvetakipsistemi.needlist.dto.NeedListPlanResponse;
 import com.emre.meyvetakipsistemi.needlist.dto.NeedListRequest;
 import com.emre.meyvetakipsistemi.needlist.dto.NeedListResponse;
 import com.emre.meyvetakipsistemi.notification.NotificationService;
+import com.emre.meyvetakipsistemi.purchase.PurchaseRepository;
 import com.emre.meyvetakipsistemi.task.TaskAssignment;
 import com.emre.meyvetakipsistemi.task.TaskAssignmentRepository;
 import com.emre.meyvetakipsistemi.task.TaskDeadlineCalculator;
@@ -51,6 +52,12 @@ public class NeedListService {
     private final CurrentUserService currentUserService;
     private final TaskDeadlineCalculator taskDeadlineCalculator;
 
+    /*
+      Yalnizca "bu plan icin alim yapilmis mi" kontrolu icin kullanilir
+      (bkz. requirePlanNotPurchased). Alim kaydinin kendisi burada okunmaz.
+    */
+    private final PurchaseRepository purchaseRepository;
+
     // Spring gerekli repository ve service nesnelerini buradan otomatik verir.
     public NeedListService(
             NeedListRepository needListRepository,
@@ -62,7 +69,8 @@ public class NeedListService {
             TaskAssignmentRepository taskAssignmentRepository,
             NotificationService notificationService,
             CurrentUserService currentUserService,
-            TaskDeadlineCalculator taskDeadlineCalculator
+            TaskDeadlineCalculator taskDeadlineCalculator,
+            PurchaseRepository purchaseRepository
     ) {
         this.needListRepository = needListRepository;
         this.fruitRepository = fruitRepository;
@@ -74,6 +82,7 @@ public class NeedListService {
         this.notificationService = notificationService;
         this.currentUserService = currentUserService;
         this.taskDeadlineCalculator = taskDeadlineCalculator;
+        this.purchaseRepository = purchaseRepository;
     }
 
     /*
@@ -201,6 +210,30 @@ public class NeedListService {
             throw new RuntimeException("Bu plana ait ihtiyaç kaydı bulunamadı");
         }
 
+        /*
+          SAHİPLİK KONTROLÜ: Bir planı yalnızca onu OLUŞTURAN personel (veya
+          ADMIN) iptal edebilir.
+
+          Önceden yalnızca ROL kontrol ediliyordu; bu yüzden herhangi bir mağaza
+          personeli, planId'yi doğrudan göndererek BAŞKASININ planını silebilirdi.
+          Ekranda yalnızca kendi planları listeleniyordu ama ekran atlanabilir.
+
+          Kimlik, istekten gelen userId'den DEĞİL, doğrulanmış JWT'den okunur
+          (updateNeedList ile aynı desen) - aksi halde saldırgan isteğe planın
+          gerçek sahibinin id'sini yazarak kontrolü geçebilirdi.
+        */
+        currentUserService.requireOwnerOrAdmin(
+                needs.get(0).getCreatedBy(),
+                "Yalnızca kendi oluşturduğunuz planı iptal edebilirsiniz."
+        );
+
+        /*
+          Alımı başlamış bir plan iptal EDİLEMEZ. Aksi halde müdürün parasını
+          ödeyip aldığı ürünlerin ihtiyaç kaydı ortadan kalkar; alım, toplama ve
+          kabul kayıtları sahipsiz kalır ve denetim hiçbir karşılaştırma yapamaz.
+        */
+        requirePlanNotPurchased(planId, "Bu planın alımı yapıldığı için plan iptal edilemez.");
+
         int deletedCount = needs.size();
 
         needListRepository.deleteAll(needs);
@@ -253,6 +286,20 @@ public class NeedListService {
         currentUserService.requireOwnerOrAdmin(
                 needList.getCreatedBy(),
                 "Yalnızca kendi oluşturduğunuz ihtiyaç kaydını güncelleyebilirsiniz."
+        );
+
+        /*
+          ALIM YAPILDIYSA MİKTAR DEĞİŞTİRİLEMEZ.
+
+          Bu, projenin denetim amacının doğrudan gereğidir: müdür "100 kg lazım"
+          bilgisine bakıp 95 kg alıyor. Personel sonradan ihtiyacı 120 kg yaparsa
+          ConsistencyCheckService, alımı gerçekte hiç var olmamış bir sayıyla
+          karşılaştırır ve "25 kg eksik alınmış" gibi yanlış bir kayıp üretir.
+          Kısacası geçmişe dönük değişiklik, denetimi anlamsız kılar.
+        */
+        requirePlanNotPurchased(
+                needList.getPlanId(),
+                "Bu planın alımı yapıldığı için ihtiyaç miktarı artık değiştirilemez."
         );
 
         needList.setPlanId(request.getPlanId());
@@ -335,7 +382,13 @@ public class NeedListService {
                 storeInfo.generalNotes(),
                 needList.getStatus(),
                 updatedByName,
-                updatedDate
+                updatedDate,
+                /*
+                  Alım başladıysa kayıt kilitlidir; frontend düzenle/sil
+                  butonlarını buna bakarak gizler.
+                */
+                needList.getPlanId() != null
+                        && !purchaseRepository.existsByPlanId(needList.getPlanId())
         );
     }
 
@@ -367,22 +420,27 @@ public class NeedListService {
     }
 
     /*
-      Müdürün, var olan bir plana ekstra ürün eklemesini sağlar. YENİ bir
-      DeliveryPlan OLUŞTURMAZ — yalnızca aynı planId ile yeni NeedList satırları
-      ekler. Bu sayede ekstra ürünler, Purchase/Collection/Acceptance'ın zaten
-      kullandığı "needListRepository.findByPlanId(planId)" sorgusuyla otomatik
-      olarak normal ürünlerle birlikte görünür; Purchase/Collection/Acceptance
-      servislerinde hiçbir değişiklik gerekmez.
+      Var olan bir plana ekstra ürün ekler. YENİ bir DeliveryPlan OLUŞTURMAZ —
+      yalnızca aynı planId ile yeni NeedList satırları ekler. Bu sayede ekstra
+      ürünler, Purchase/Collection/Acceptance'ın zaten kullandığı
+      "needListRepository.findByPlanId(planId)" sorgusuyla otomatik olarak normal
+      ürünlerle birlikte görünür; o servislerde hiçbir değişiklik gerekmez.
 
-      ÖNEMLİ: Yeni satırların createdBy'ı MÜDÜR değil, planın MEVCUT sahibidir.
-      Aksi halde TaskAssignmentService.resolvePlanOwner (Teslimat tamamlanınca
-      Kabul görevini kime atayacağını bulan metot) "plana ait ihtiyaç kayıtları
-      farklı kullanıcılara ait" hatası fırlatır, çünkü o metot tüm NeedList
-      kayıtlarının createdBy'ının aynı kişi olmasını şart koşar.
+      Kimler ekleyebilir:
+        - MAGAZA_MUDURU : Alım İşlemleri ekranından, alımı girmeden önce
+        - MAGAZA_PERSONELI : yalnızca KENDİ oluşturduğu plana, Mevcut İhtiyaçlar
+          ekranından. (Önceden yalnızca müdür ekleyebiliyordu; personel planı
+          oluşturduktan sonra unuttuğu bir ürünü ekleyemiyor, planı silip
+          baştan oluşturmak zorunda kalıyordu.)
+
+      ÖNEMLİ: Yeni satırların createdBy'ı ekleyen kişi değil, planın MEVCUT
+      sahibidir. Aksi halde TaskAssignmentService.resolvePlanOwner (Teslimat
+      tamamlanınca Kabul görevini kime atayacağını bulan metot) "plana ait
+      ihtiyaç kayıtları farklı kullanıcılara ait" hatası fırlatır.
     */
     @Transactional
     public List<NeedListResponse> addExtraItemsToPlan(Long planId, AddExtraItemsRequest request) {
-        User manager = requireManager(request.getManagerId());
+        User requester = requireItemAdder(request.getUserId());
 
         List<NeedList> existingNeeds = needListRepository.findByPlanId(planId);
 
@@ -397,12 +455,21 @@ public class NeedListService {
             throw new RuntimeException("Bu plan tamamlanmış veya iptal edilmiş, ürün eklenemez");
         }
 
-        boolean purchaseAlreadyCompleted = taskAssignmentRepository
-                .findByPlanIdAndTaskType(planId, TaskType.TOPLAMA)
-                .isPresent();
+        // Alım yapıldıysa plan kilitlidir (bkz. requirePlanNotPurchased).
+        requirePlanNotPurchased(
+                planId,
+                "Bu planın alımı yapıldığı için artık ürün eklenemez."
+        );
 
-        if (purchaseAlreadyCompleted) {
-            throw new RuntimeException("Bu planın alımı zaten tamamlandığı için ekstra ürün eklenemez");
+        /*
+          Personel yalnızca KENDİ planına ürün ekleyebilir. Müdür için böyle bir
+          kısıt yoktur: alımı o yapacağı için her plana ekleyebilmesi gerekir.
+        */
+        Long ownerId = existingNeeds.get(0).getCreatedBy();
+
+        if (requester.getRole() == UserRole.MAGAZA_PERSONELI
+                && !requester.getId().equals(ownerId)) {
+            throw new RuntimeException("Yalnızca kendi oluşturduğunuz plana ürün ekleyebilirsiniz");
         }
 
         if (request.getItems() == null || request.getItems().isEmpty()) {
@@ -410,7 +477,7 @@ public class NeedListService {
         }
 
         // Planın orijinal sahibi korunur; ekstra ürünler de aynı kullanıcıya aitmiş gibi kaydedilir.
-        Long planOwnerId = existingNeeds.get(0).getCreatedBy();
+        Long planOwnerId = ownerId;
 
         Set<Long> existingFruitIds = existingNeeds.stream()
                 .map(NeedList::getFruitId)
@@ -450,16 +517,32 @@ public class NeedListService {
             NeedList savedNeedList = needListRepository.save(needList);
 
             auditLogService.createLog(
-                    manager.getId(),
-                    manager.getFullName(),
+                    requester.getId(),
+                    requester.getFullName(),
                     AuditActionType.NEED_LIST_CREATED,
                     "NeedList",
                     savedNeedList.getId(),
-                    manager.getFullName() + " Plan #" + planId + " için ekstra ürün ekledi. Kayıt ID: " + savedNeedList.getId()
+                    requester.getFullName() + " Plan #" + planId + " için ekstra ürün ekledi. Kayıt ID: " + savedNeedList.getId()
             );
 
             result.add(convertToResponse(savedNeedList));
         }
+
+        /*
+          Plana yeni urun eklendiginde muduru haberdar et.
+
+          Onemli: mudur alim ekranini acmis, eski urun listesini doldururken
+          personel yeni bir urun ekleyebilir. Haber gitmezse mudur o urunu hic
+          gormeden alimi kaydetmeye calisir ve "planin tum urunleri birlikte
+          gonderilmelidir" hatasina takilir; sebebini de anlayamaz.
+          Mudur zaten IHTIYAC_GUNCELLENDI bildirimini dinliyor
+          (bkz. PurchaseManagement/index.js).
+        */
+        notifyPlanManager(
+                planId,
+                "IHTIYAC_GUNCELLENDI",
+                result.size() + " urun plana eklendi (Plan #" + planId + ")."
+        );
 
         return result;
     }
@@ -511,8 +594,49 @@ public class NeedListService {
         });
     }
 
+    /*
+      PLANIN KİLİTLENMESİ.
+
+      Bir plan için ilk alım kaydı oluştuğu anda ihtiyaç satırları dondurulur:
+      artık miktar değiştirilemez, ürün eklenemez, plan iptal edilemez.
+
+      Sebebi projenin denetim amacıdır. Müdür "100 kg lazım" bilgisine bakıp
+      95 kg alır. Personel sonradan ihtiyacı 120 kg yaparsa denetim, alımı
+      gerçekte hiç var olmamış bir sayıyla karşılaştırır ve uydurma bir kayıp
+      üretir. Aynı şekilde plan silinirse alım/toplama/kabul kayıtları sahipsiz
+      kalır. Geçmişe dönük değişiklik, tüm denetimi anlamsız kılar.
+
+      Not: Aynı kural frontend'de de uygulanır (düzenle/sil butonları gizlenir),
+      ama asıl kapı burasıdır - ekran atlanıp doğrudan istek atılabilir.
+    */
+    private void requirePlanNotPurchased(Long planId, String message) {
+        if (planId != null && purchaseRepository.existsByPlanId(planId)) {
+            throw new RuntimeException(message);
+        }
+    }
+
+    /*
+      Plana ekstra ürün ekleyebilecek kullanıcıyı doğrular: mağaza müdürü veya
+      mağaza personeli. Personelin yalnızca KENDİ planına ekleyebilmesi ayrıca
+      addExtraItemsToPlan içinde kontrol edilir.
+    */
+    private User requireItemAdder(Long userId) {
+        if (userId == null) {
+            throw new RuntimeException("Kullanıcı kimliği gereklidir");
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Kullanıcı bulunamadı"));
+
+        if (user.getRole() != UserRole.MAGAZA_MUDURU
+                && user.getRole() != UserRole.MAGAZA_PERSONELI) {
+            throw new RuntimeException("Bu işlem için mağaza müdürü veya personeli yetkisi gereklidir");
+        }
+
+        return user;
+    }
+
     // Çağıranın var olan ve MAGAZA_MUDURU rolünde bir kullanıcı olduğunu doğrular.
-    // Yalnızca mevcut bir plana ekstra ürün ekleme (addExtraItemsToPlan) için kullanılır.
     private User requireManager(Long userId) {
         if (userId == null) {
             throw new RuntimeException("Kullanıcı kimliği gereklidir");

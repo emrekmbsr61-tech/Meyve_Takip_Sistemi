@@ -1,366 +1,267 @@
 # Meyve Takip Sistemi — Proje Durum Özeti
 
 > Bu dosya, bir sohbet oturumundan diğerine teknik bağlamın kaybolmaması için
-> oluşturuldu. Yeni bir konuşmada Claude'a bu dosyayı okumasını söylersen
-> (`PROJE_DURUM_OZETI.md`), projenin tam geçmişiyle devam edebilir.
+> tutulur. Yeni bir konuşmada Claude'a bu dosyayı okumasını söylersen
+> (`PROJE_DURUM_OZETI.md`), projenin durumuyla devam edebilir.
+>
+> **Son güncelleme: 21 Ağustos 2026**
 
 ---
 
 ## 1. Proje Nedir
 
 **Mini Meyve Alım-Toplama Kontrol Sistemi** — bir sipariş takip uygulaması
-değil, bir **denetim** uygulaması. Amacı: meyve mağazaya ulaşana kadar geçtiği
-her aşamada miktarın değişip değişmediğini yakalamak, yani kaybın/hırsızlığın
-**hangi aşamada** olduğunu tespit etmek.
+değil, bir **denetim** uygulaması. Amaç: meyve mağazaya ulaşana kadar geçtiği
+her aşamada miktarın değişip değişmediğini yakalamak, yani kaybın **hangi
+aşamada** olduğunu tespit etmek.
 
-**Kontrol mantığı:** Her personel kendi işlemini bağımsız olarak yapar ve
-gerçek miktarları sisteme girer; bir önceki aşamanın miktarını görmeden:
+**Kontrol mantığı:** Dört kişi, dört bağımsız sayım. Her biri bir öncekinin
+rakamını **görmeden** kendi saydığını girer:
 
-1. **Mağaza personeli** → ne kadar lazım olduğunu yazar (İhtiyaç)
-2. **Mağaza müdürü** → halden ne kadar aldığını yazar (Alım) — fiyat da burada girilir
-3. **Şoför** → kendi saydığı miktarı yazar (Toplama) — **müdürün miktarını ve fiyatını göremez**
-4. **Mağaza personeli** → teslim alırken kendi saydığı miktarı yazar (Kabul)
+1. **Mağaza personeli** → ne kadar lazım (İhtiyaç)
+2. **Mağaza müdürü** → halden ne kadar aldı (Alım) — fiyat da burada
+3. **Şoför** → kendi saydığı miktar (Toplama) — *müdürün miktarını ve fiyatını göremez*
+4. **Mağaza personeli** → teslim alırken kendi saydığı (Kabul)
 
-Sistem bu dört bağımsız sayımı karşılaştırır; iki aşama arasında miktar
-düştüyse orada bir kayıp vardır ve bu otomatik olarak işlem kayıtlarına yazılır.
+Sistem bu dördünü karşılaştırır; iki aşama arasında düşüş varsa kayıp oradadır
+ve otomatik olarak `audit_logs`'a yazılır.
 
-**Kullanıcı seviyesi:** Projeyi geliştiren, Java/Spring Boot/React Native
-konusunda başlangıç seviyesinde. Şu an 8-9 günlük bir kod okuma sürecinde,
-sunuma hazırlanıyor.
+**Kullanıcı:** Projeyi geliştiren Emre; Java/Spring Boot/React Native'de
+başlangıç seviyesinde. Staj bitimine **5 iş günü** var (26 Ağustos civarı).
 
 ---
 
 ## 2. Mimari
 
 ```
-frontend/                                    React Native (Expo, SDK 57)
+frontend/                                    React Native (Expo SDK 57, RN 0.86)
   src/pages/…/index.js         → ekranlar
+  src/components/              → paylaşılan bileşenler
   src/services/…Service.js     → backend'e istek atan fonksiyonlar
-  src/services/httpClient.js   → TÜM istekler buradan geçer, token otomatik eklenir
-  src/services/websocketService.js → anlık bildirim bağlantısı (STOMP)
-  src/components/              → paylaşılan küçük bileşenler (CountdownText vb.)
+  src/services/httpClient.js   → TÜM istekler buradan, token otomatik eklenir
+  src/services/websocketService.js → anlık bildirim (STOMP)
+  src/config/api.js            → backend adresi (OTOMATİK çözülür, sabit IP yok)
 
 src/main/java/com/emre/meyvetakipsistemi/    Spring Boot 3, Java 21
-  <modül>/…Controller.java     → HTTP adresini karşılar (ince katman)
-  <modül>/…Service.java        → İŞ KURALLARI burada
-  <modül>/…Repository.java     → veritabanı sorguları (Spring Data JPA)
-  <modül>/<Entity>.java        → veritabanı tablosunun Java karşılığı
-  <modül>/dto/…Request.java    → frontend'den gelen veri
-  <modül>/dto/…Response.java   → frontend'e giden veri (entity ASLA doğrudan dönmez)
+  <modül>/…Controller.java     → HTTP kapısı (ince katman) + @PreAuthorize
+  <modül>/…Service.java        → İŞ KURALLARI
+  <modül>/…Repository.java     → veritabanı sorguları
+  <modül>/<Entity>.java        → tablo karşılığı
+  <modül>/dto/…                → Request / Response (entity ASLA doğrudan dönmez)
 
-PostgreSQL                                   veritabanı: meyve_takip_sistemi
+PostgreSQL 18                                veritabanı: meyve_takip_sistemi
 ```
 
-**Her özelliğin izlediği ortak desen** (bunu anlarsan projenin tamamını anlarsın):
-
-```
-Ekran → Servis (frontend) → httpClient.js (token ekler) → İNTERNET
-      → Controller → Service (iş kuralları) → Repository → PostgreSQL
-```
-
-**Güvenlik:** JWT tabanlı. `JwtAuthenticationFilter` her isteği karşılar, token
-geçerliyse kullanıcı id'sini ve rolünü Spring Security context'ine yerleştirir.
-`SecurityConfig`'te `/api/auth/**`, `/swagger-ui/**`, `/ws/**`, `/fruits/**`
-(görsel dosyaları) dışında **her endpoint token ister**. Admin-özel
-endpoint'ler `@PreAuthorize("hasRole('ADMIN')")` ile korunur.
-`@EnableMethodSecurity` bunu SecurityConfig'te açar.
-
-**Anlık bildirim:** WebSocket (STOMP), `/topic/notifications/{userId}`
-adresine yayın yapılır. Her kullanıcı yalnızca kendi adresine abone olabilir
-(`StompAuthChannelInterceptor` bunu doğrular — aşağıda "kritik hatalar"da detay var).
+**Ortak desen:** `Ekran → Servis (frontend) → httpClient → Controller → Service → Repository → DB`
 
 ---
 
-## 3. Veritabanı Yapısı (PostgreSQL — 14 tablo)
+## 3. Veritabanı (14 tablo)
 
-**Ana zincir** — hepsi `plan_id` ile birbirine bağlı:
+Ana zincir, hepsi `plan_id` ile bağlı:
 
 ```
-delivery_plans  →  need_list  →  purchases  →  collections  →  acceptances + acceptance_items
-   (planId          (İhtiyaç)     (Alım)         (Toplama)        (Mal Kabul, satır bazlı)
-    burada
-    doğar)
+delivery_plans → need_list → purchases → collections → acceptances + acceptance_items
 ```
 
-**Destekleyici tablolar:**
+Destekleyiciler: `users`, `fruits`, `suppliers`, `task_assignments`, `audit_logs`,
+`price_history`, `email_verification_codes`, `transport_logs` (kullanılmıyor, legacy).
 
-| Tablo | Görevi |
-|---|---|
-| `users` | Kullanıcılar (id, username, password [BCrypt], role, isVerified) |
-| `fruits` | Meyve/sebze kataloğu (isPerishable, profitMarginPercent burada) |
-| `suppliers` | Tedarikçiler |
-| `task_assignments` | Görev atamaları (planId, assignedUserId, taskType, status, dueDate) |
-| `audit_logs` | Tüm işlem kayıtları (userId, actionType, **planId**, **status**, **details** JSON) |
-| `price_history` | Alım fiyatı geçmişi (son 3 gün karşılaştırması için) |
-| `email_verification_codes` | E-posta doğrulama kodları |
-| `transport_logs` | Kullanılmıyor, eski/legacy kalıntı |
-
-`planId`'nin doğuşu: `NeedListService.createNeedListPlan()` içinde önce
-`DeliveryPlan` kaydedilir (`deliveryPlanRepository.save()` → veritabanı yeni id
-üretir), sonra seçilen **her meyve** aynı döngüde bu id ile `need_list`
-tablosuna yazılır. planId frontend'den asla gönderilmez, backend üretir.
+**planId'nin doğuşu:** `NeedListService.createNeedListPlan()` içinde
+`deliveryPlanRepository.save()` çağrıldığı an PostgreSQL auto-increment ile üretir.
+Frontend planId'yi asla göndermez.
 
 ---
 
-## 4. Bugüne Kadar Yapılan İşler (kronolojik)
-
-### 4.1 — Şartname denetimi ve 10 eksik maddenin tamamlanması
-
-Kullanıcının verdiği `PROJECT ASSIGNMENT.docx` dosyası kod ile satır satır
-karşılaştırıldı, eksik liste çıkarıldı ve **hepsi tamamlandı**:
-
-1. **AuditLog zenginleştirildi** — `planId`, `status` (yeni enum `AuditStatus`:
-   SUCCESS/WARNING/ERROR/CRITICAL), `details` (JSON metni) alanları eklendi.
-2. **ConsistencyCheckService** (`consistency/` modülü) — projenin kalbi.
-   Toplama ve Mal Kabul kaydedilir kaydedilmez otomatik çalışır, 4
-   karşılaştırma yapar: İhtiyaç↔Alım (WARNING), Alım↔Toplama (CRITICAL),
-   Toplama↔Kabul (CRITICAL), İhtiyaç↔Kabul (ERROR). `CheckStage` enum'u ile
-   hangi aşamada hangi karşılaştırmaların yapılacağı ayrılır (aşağıda "hata 4"e bakın).
-3. **Güvenlik sıkılaştırması** — `CurrentUserService` kimliği JWT'den okur
-   (istekten değil). `updateNeedList`/`deleteNeedList`/`TaskAssignmentService.start`
-   artık sahiplik kontrolü yapıyor (`requireOwnerOrAdmin`). Admin endpoint'lerine
-   `@PreAuthorize` eklendi.
-4. **OverdueTaskScheduler** — `@Scheduled` ile 5 dakikada bir kendiliğinden
-   çalışır, süresi geçen görevleri `OVERDUE` yapar, WARNING logu yazar,
-   sorumlusuna bildirim gönderir.
-5. **GlobalExceptionHandler** — merkezi hata yönetimi, tüm hatalar aynı JSON
-   biçiminde döner (`timestamp, status, error, message, path`). Bu arada
-   `httpClient.js`'te bir hata bulundu: hata mesajını yalnızca düz metinken
-   okuyordu, JSON nesnesinden okumuyordu — düzeltildi.
-6. **Dashboard/Özet ekranı** — `GET /api/dashboard`. (Sonradan büyük ölçüde
-   yeniden tasarlandı, bkz. 4.5)
-7. **DTO dönüşümleri** — entity'lerin doğrudan API'de dönmesi engellendi (bu
-   iş bugün genişletilerek tamamlandı, bkz. 4.6).
-8. **Canlı geri sayım + görev süresi** — `CountdownText.js` saniyede bir
-   güncellenir, süre azaldıkça renk değişir. `TaskDeadlineCalculator` dört
-   ayrı yerde tekrarlanan "4 saat" sabitini tek yere topladı ve
-   `isPerishable` kuralını gerçekten uygulamaya başladı (bozulabilir üründe 2 saat).
-9. **README yeniden yazıldı**, kurulum/DB/rol tabloları eklendi. "Plan Notu"
-   hatası düzeltildi (`NeedListResponse`'ta `planNotes` alanı eksikti).
-10. **Plan özet maili** — `PlanSummaryMailService`. Mal kabul tamamlanınca
-    renkli HTML mail: ürün tablosu, farklar, TL cinsinden finansal kayıp
-    özeti. `meyve.mail.plan-summary.enabled` ayarıyla geliştirirken kapatılabilir.
-
-### 4.2 — Uçtan uca test sırasında bulunan 4 GERÇEK HATA
-
-Ayrı bir test backend'i (port 8090) ve geçici test kullanıcılarıyla tüm akış
-gerçek veritabanında test edildi. Şunlar bulundu ve düzeltildi:
-
-1. **Süre hesaplama hatası** — `assignAlimTask()` ürünler veritabanına
-   yazılmadan **önce** çağrılıyordu; bu yüzden `TaskDeadlineCalculator` planı
-   hep boş görüyor, bozulabilir üründe bile 4 saat veriyordu. Çağrı sırası
-   düzeltildi (ürünler kaydedildikten sonra çağrılıyor).
-2. **Veritabanı kısıtı hatası (en ciddisi)** — `audit_logs.action_type`
-   sütununda eski bir CHECK kısıtı vardı, yalnızca ilk 13 enum değerini kabul
-   ediyordu. Yeni `CONSISTENCY_CHECK`/`SYSTEM_CHECK` değerleri eklenince
-   veritabanı INSERT'i reddediyordu — ve bu, **aynı transaction içindeki asıl
-   işlemi de (şoförün toplama kaydı gibi) geri alıyordu**. Üç parçalı çözüm:
-   - Veritabanı kısıtı güncellendi
-   - Kalıcı migration dosyası: `src/main/resources/db/migration_audit_log_action_types.sql`
-   - **Mimari düzeltme:** Log yazma artık `AuditLogService.createLogSafely()`
-     ile **ayrı bir transaction'da** (`@Transactional(propagation = REQUIRES_NEW)`,
-     try/catch içinde) yapılıyor. Bir log hatası artık asla asıl işlemi bozamaz.
-3. **Aynı kısıt sorunu `task_assignments.status`'ta da vardı** — `OVERDUE`
-   değeri kabul edilmiyordu. Aynı migration dosyasıyla düzeltildi.
-   `OverdueTaskScheduler` da dayanıklı hale getirildi: artık her görevi ayrı
-   ayrı işliyor (`markSingleTaskOverdue`), biri hata verirse diğerleri
-   etkilenmiyor.
-4. **Tekrarlayan bulgu hatası** — `ConsistencyCheckService` hem Toplama hem
-   Kabul sonrasında TÜM 4 karşılaştırmayı yapıyordu, bu da aynı ürün için
-   tekrarlayan log kayıtlarına yol açıyordu. `CheckStage` enum'u
-   (`AFTER_COLLECTION` / `AFTER_ACCEPTANCE`) eklenerek her aşama yalnızca
-   kendi yeni karşılaştırmalarını yapacak şekilde ayrıldı.
-
-### 4.3 — Kullanıcı deneyimi iyileştirmeleri
-
-- **NeedListCreate**: miktar artık +/- yanında elle de yazılabiliyor.
-- **NeedListList**: bir plandaki birden fazla ürün tek "Kaydet" ile
-  güncelleniyor; yalnızca **gerçekten değişen** ürünler gönderiliyor (aksi
-  halde dokunulmayan ürünlerde de "son güncelleyen" bilgisi yanlış değişiyordu).
-- **SoforTaskDetail**: gereksiz açıklama metni kaldırıldı.
-- **Acceptance**: "teslim edilen miktar" gösterimi kaldırıldı; "kabul+red
-  bekleneni geçemez" kısıtı hem frontend hem backend'den kaldırıldı (gerçek
-  sayım engellenmemeli).
-- **Not zinciri tamamlandı**: Personel notu → Müdür ekranında görünüyor; Müdür
-  notu → Şoför ekranında görünüyor; Şoför notu → Personel'in mal kabul
-  ekranında görünüyor.
-- **Ölü kod temizliği**: `App.js`'teki kullanılmayan iki placeholder ekran
-  silindi (~150 satır).
-
-### 4.4 — Bildirim sistemi düzeltmeleri (3 ayrı gerçek hata)
-
-1. **React Native WebSocket "null chopping" hatası** — `@stomp/stompjs`
-   kütüphanesinin bilinen bir sorunu: React Native'in WebSocket'i STOMP
-   paketlerindeki NULL karakterini siliyor, bağlantı **sessizce** başarısız
-   oluyor (hiç hata mesajı yok). `websocketService.js`'e
-   `forceBinaryWSFrames: true` ve `appendMissingNULLonIncoming: true` eklendi
-   + hata/kapanma logları eklendi.
-2. **Ekranlar bildirim geldiğinde kendini yenilemiyordu** —
-   `PurchaseManagement`, `NeedListList`, `ActiveTasks` ekranlarına
-   `addNotificationListener` ile canlı yenileme eklendi (aktif düzenleme
-   varsa yenilenmiyor, kullanıcı verisi kaybolmasın diye).
-3. **Eksik bildirimler tamamlandı** — `updateNeedList`/`deleteNeedList`/
-   `cancelNeedListPlan` artık planın müdürüne bildirim gönderiyor
-   (`notifyPlanManager` — ALIM görevinin atandığı kişiye gider, önceden
-   yalnızca plan OLUŞTURULUNCA bildirim gidiyordu). `CollectionService`'e
-   eksik olan `TESLIMAT_GOREVI_ATANDI` bildirimi eklendi. `AcceptanceService`
-   mal kabul tamamlanınca artık **personel + müdür + admin** üçüne birden
-   bildirim gönderiyor (önceden yalnızca işlemi yapan kişiye, yani kendine
-   gidiyordu — anlamsızdı).
-
-### 4.5 — Dashboard/Özet ekranı: büyük yeniden tasarım
-
-**Sorun:** "Miktar Farkları" bölümü anlaşılmaz duruyordu. Sebebi: plan daha
-**bitmeden** (yalnızca Toplama sonrası) ham `AuditLog` kayıtlarını
-gösteriyordu ve tek bir üründeki uçtan uca kayıp 4 ayrı parçalı karta
-bölünüyordu.
-
-**Çözüm:**
-- Yeni `DashboardIssueResponse` DTO'su artık JSON string yerine düz sayılar
-  taşıyor (`requiredQuantity, purchasedQuantity, collectedQuantity,
-  acceptedQuantity, lossDetected, completedAt`).
-- `DashboardService.findRecentIssues()` artık yalnızca **TAMAMLANMIŞ**
-  planları tarıyor (bir planın Acceptance kaydı varsa tamamlanmıştır, çünkü
-  kısmi mal kabul sistemde zaten yasak). `PlanSummaryService.buildSummary()`
-  (özet mailiyle aynı kaynak) kullanılarak her ürün için TEK satır üretiliyor.
-- **Dayanıklılık hatası bulundu ve düzeltildi**: eski/bozuk bir plan (need_list
-  satırları silinmiş ama Acceptance kaydı kalmış — kullanıcının kendi önceki
-  testinden kalma gerçek bir veri tutarsızlığı, plan #9) `buildSummary`'yi
-  patlatıp **tüm** Özet ekranını çökertiyordu. Her plan artık try/catch ile
-  korunuyor, bozuk bir plan yalnızca atlanıyor.
-- Frontend `IssueCard.js` baştan yazıldı: "İhtiyaç → Alım → Toplama → Kabul"
-  akışını ok işaretleriyle gösteren, farkın olduğu okun kırmızı/turuncu
-  renklendiği görsel bir tasarım.
-- Özet ekranı artık ayrı bir menü kartı (önceden ana ekrana gömülüydü) ve
-  yalnızca **ADMIN + MAĞAZA_MÜDÜRÜ** görebiliyor (personel/şoför göremiyor).
-- Canlı test doğrulandı: plan bitmeden hiç görünmüyor, bittiğinde sorunlu her
-  ürün için tam olarak 1 kart çıkıyor.
-
-### 4.6 — Bugün: kalan 4 mimari eksik tamamlandı
-
-Kod okuma rehberi hazırlanırken tespit edilen, henüz çözülmemiş 4 madde:
-
-1. **Entity'leri doğrudan döndüren 4 controller** düzeltildi — yeni
-   `FruitResponse`, `SupplierResponse`, `TaskAssignmentResponse`,
-   `DeliveryPlanResponse` DTO'ları oluşturuldu, ilgili Controller+Service
-   çiftleri bunları kullanacak şekilde güncellendi.
-   - Bu sırada **tehlikeli bir uç nokta bulundu ve kaldırıldı**:
-     `POST /api/delivery-plans` hiçbir ekran tarafından kullanılmıyordu ama
-     ürünsüz/sahipsiz plan oluşturmaya izin veriyordu — tam olarak yukarıdaki
-     "plan #9 çöküşü"nün kök sebebiydi. Tamamen kaldırıldı; planlar artık
-     yalnızca `POST /api/need-lists/plan` üzerinden, ürünleriyle birlikte
-     oluşuyor. Kalan `GET` uçları admin'e kilitlendi.
-2. **`@Valid` doğrulama eklendi** — `NeedListPlanRequest/Item`,
-   `PurchasePlanRequest/Item`, `CollectionPlanRequest/Item` sınıflarına
-   `@NotNull`, `@NotBlank`, `@NotEmpty`, `@Positive`, `@PositiveOrZero`
-   eklendi, ilgili 3 controller'da `@Valid` devreye alındı.
-3. **Bu sırada bir hata daha bulundu**: `GlobalExceptionHandler`'ın genel
-   yakalayıcısı, gerçek istemci hatalarını (yanlış HTTP metodu, bozuk JSON,
-   eksik parametre) yanlışlıkla 500 "Sunucu hatası" olarak gösteriyordu.
-   `HttpRequestMethodNotSupportedException` (→405), `HttpMessageNotReadableException`
-   (→400), `MissingServletRequestParameterException` (→400),
-   `MethodArgumentTypeMismatchException` (→400) için özel yakalayıcılar eklendi.
-4. Canlı testte **14/14** kontrol geçti (frontend alanları bozulmadı,
-   tedarikçi adres/telefonu artık sızmıyor, geçersiz istekler doğru mesajla
-   reddediliyor, geçerli istek hâlâ çalışıyor).
-
-### 4.7 — Kaza ve onarım (önemli, tekrar olmasın diye not düşülüyor)
-
-Test sırasında **kendi test kullanıcılarım** (küçük id'li, çünkü sistem
-görevleri en küçük id'li müdür/şoföre atıyor:
-`findFirstByRoleOrderByIdAsc`) gerçek kullanıcının (Plan #40) görevlerini
-üstüne çekti; test kullanıcıları silinince görevler **var olmayan
-kullanıcılara** bağlı kaldı (yetim kayıt). Kullanıcı "her şey mahvolmuş,
-şoföre görev düşmüyor" diye bildirdi. Kök sebep bulundu, görevler gerçek
-sahiplerine (`ee` id 8, `emrekmbsr` id 13) taşındı, süresi sıfırlandı,
-`audit_logs`'a onarım notu eklendi (geçmiş **silinmedi**, ek kayıt olarak
-düşüldü — denetim kaydının doğru yöntemi bu). Para rakamlarının da doğru
-olduğu ham veriyle doğrulandı (yanlış görünmesinin sebebi test verilerinin
-karışmasıydı).
-
-**Ders çıkarıldı:** Bundan sonra kullanıcının gerçek kullanıcılarından küçük
-id'li test kullanıcısı oluşturulmayacak.
-
----
-
-## 5. Şu Anki Durum
+## 4. Şu Anki Durum
 
 | Kontrol | Durum |
 |---|---|
 | Backend derlemesi (`mvnw compile`) | ✅ Temiz |
-| Frontend söz dizimi (47 dosya, babel parser) | ✅ Temiz |
-| Veritabanı — test kullanıcısı/yetim kayıt | ✅ Yok (defalarca doğrulandı) |
-| Uçtan uca akış (İhtiyaç→Alım→Toplama→Teslimat→Kabul) | ✅ Canlı test edildi, gerçek verilerle |
-| Otomatik kayıp tespiti | ✅ Şartnamedeki örnek senaryoyla birebir doğrulandı |
-| Bildirim sistemi (4 rol, tüm aşamalar) | ✅ Canlı WebSocket testleriyle doğrulandı |
-| **Gerçek telefonda/Expo'da elle tıklayarak test** | ❌ **HİÇ YAPILMADI** — tüm testler API seviyesinde (node script) |
-| Git commit | ❌ **Hiç commit yapılmadı**, 39 dosya değişikliği bekliyor |
-| Otomatik test (JUnit) | ❌ Yok, bilinen/kabul edilmiş eksik |
-
-**En önemli açık nokta:** Backend'in doğruluğu çok sıkı test edildi, ama
-React Native arayüzünün kendisi (buton bağlantıları, ekran render'ı, prop
-isimleri) hiçbir zaman gerçek cihazda/Expo'da denenmedi. Kod tarafı sağlam
-olsa bile arayüzde küçük bir yazım hatası olabilir — bunu ancak elle deneyerek
-görürsün.
+| Frontend söz dizimi | ✅ Temiz |
+| Şartname zorunlu maddeleri | ✅ Hepsi karşılanıyor (bkz. bölüm 7) |
+| Git | 22 commit + **54 dosya commit bekliyor** (21 Ağustos akşamı atılacak) |
+| **Gerçek telefonda uçtan uca elle test** | ❌ **EN ÖNEMLİ AÇIK** |
+| Otomatik test (JUnit) | ❌ Yok (şartnamede istenmiyor) |
 
 ---
 
-## 6. Cevabı Bekleyen / Karar Verilmemiş Konular
+## 5. 21 Ağustos'ta Yapılanlar (bu oturum)
 
-1. **Veritabanı şifresi düz metin.** `src/main/resources/application.properties`
-   içinde `spring.datasource.password=kante1967` hâlâ açık yazıyor. Mail ve
-   JWT için ortam değişkeni (`${MAIL_USERNAME:}` gibi) kullanılmış ama DB
-   şifresi için kullanılmamış. Sorulmuş, henüz cevap gelmedi.
-2. **Git commit yapılmadı.** 39 dosya (bugün eklenenlerle muhtemelen daha
-   fazla) çalışma dizininde bekliyor. Bir şey ters giderse geri dönüş yolu yok.
-3. **Görev dağıtımı tek kullanıcıya sabit** (bilinen/kabul edilmiş sınırlama,
-   düzeltme istenirse konuşulacak): `findFirstByRoleOrderByIdAsc` her zaman
-   en küçük id'li müdür/şoföre görev atıyor. İkinci bir şoför eklenirse asla
-   görev almaz.
+### 5.1 Bağlantı ve oturum (3 hata)
+
+1. **Sabit IP** — `api.js`'te backend adresi elle yazılıydı, Wi-Fi IP'si
+   değişince bağlantı kopuyordu. Üç denemede çözüldü:
+   `NativeModules.SourceCode` (RN 0.86'da kaldırılmış, `undefined` dönüyordu) →
+   `getDevServer()` (çalıştı ama deep-import uyarısı) → **`expo-constants`**
+   (son hâli). Açılışta `[API] Backend adresi:` konsola yazılıyor.
+2. **Süresi dolmuş token** — `tokenStorage.loadSession()` süreyi kontrol etmiyordu.
+   Backend logu kanıtı: `CONNECT(9)-CONNECTED(0)`. Artık süre dolmuşsa oturum
+   temizlenip Giriş ekranına yönlendiriliyor.
+3. **SafeAreaProvider yoktu** — `App.js`'e eklendi. Bu ayrıca bildirim kutusunun
+   sessiz hatasını da düzeltti.
+
+### 5.2 Giriş/Kayıt tasarımı
+
+Mentör "iş uygulamasına benzemiyor" dedi. `AuthLayout.js` + `AuthField.js`
+(yeni ortak bileşenler) ile Home'daki koyu yeşil kart diline uyduruldu.
+Ham `<Button>` kaldırıldı (Android'de mavi çıkıyordu).
+
+### 5.3 Doğrulama (mentörün gösterdiği konu)
+
+- `user/validation/` paketi **yeni**: `UniqueEmail`, `UniqueEmailValidator`,
+  `UniqueUsername`, `UniqueUsernameValidator`, `EmailNormalizer`
+- Elle yazılmış e-posta regex'i (`.com` zorunlu tutuyordu) → `@Email`
+- **Bulunan gerçek hata:** `AuthController.register()`'da `@Valid` yoktu, yani
+  anotasyonlar eklense bile hiç çalışmayacaktı
+- **"@ yazmadan kayıt":** `EmailNormalizer`, `emre` → `emre@gmail.com`.
+  Tamamlama DTO'nun `setEmail`'inde yapılır (doğrulamadan ÖNCE); aynı kural
+  `VerifyEmailRequest` ve `ResendVerificationRequest`'e de uygulandı
+- **Mentörden bilinçli sapma:** validator exception fırlatmıyor, `false`
+  döndürüyor — böylece Spring tüm hataları tek seferde toplayıp bildiriyor
+
+### 5.4 Görev atama (yeni özellik)
+
+Müdür personele plandan bağımsız görev atayabiliyor (ör. "Depo temizliği").
+
+- `TaskType.GENEL` eklendi; `TaskAssignment`'a `title`, `assignedBy`, `completedAt`
+- Yeni DTO'lar: `CreateTaskRequest`, `AssignableUserResponse`, `CompletedTaskResponse`
+- Uçlar: `POST /api/tasks`, `PATCH /api/tasks/{id}/complete`,
+  `GET /api/tasks/completed`, `GET /api/tasks/assignable-users`
+- `AssignTaskModal.js` (yeni) — kişi listeden seçilir, süre hazır seçeneklerden
+- Tamamlanınca müdüre anlık bildirim gider
+
+**Mentörün "bir alanı null olabilir" notu = `planId`.** Serbest görevin planı
+yok; üç yerde ayrı ayrı ele alındı yoksa ekranda **"Plan #null"** yazacaktı.
+
+**Veritabanı hatası (bu projede 3. kez):** `task_assignments_task_type_check`
+kısıtı `GENEL`'i reddetti. `ddl-auto=update` yeni SÜTUN ekler ama var olan
+CHECK kısıtını GÜNCELLEMEZ. `migration_audit_log_action_types.sql`'e üçüncü
+bölüm eklenip çalıştırıldı; 64 kayıt korundu.
+
+### 5.5 "Devam Eden İşlemler" ekranı (yeni)
+
+*"Alımı yaptım, mal şimdi nerede?"* sorusunun cevabı. `PlanProgressService.java`
+akış sırasına (ALIM→TOPLAMA→TESLIMAT→ACCEPTANCE) bakıp **tamamlanmamış ilk
+görevi** buluyor. Aşamaya göre filtreleniyor. Yalnızca müdür + admin.
+
+### 5.6 Rol bazlı yetkilendirme
+
+**27 endpoint** `@PreAuthorize` ile korunuyor (önce 6'ydı). Rol imzalı JWT'den
+okunuyor. Servislerdeki sahiplik kontrolleri **korundu** — anotasyon "hangi
+ROL", servis "hangi KİŞİ" sorusunu yanıtlıyor.
+
+### 5.7 Ekran düzeni
+
+- Tamamlanan İşlemler: personelden alındı → müdür + admin (**hem menüden hem
+  backend yetkisinden** — menü sadece görünümü gizler)
+- Mevcut İhtiyaçlar müdürden kaldırıldı (Alım İşlemleri'yle örtüşüyordu)
+- Ekstra ürün ekleme → Alım İşlemleri'ne taşındı, `NeedListList`'ten ölü kod silindi
+- Özet ekranı: kayıplar plan bazında gruplu, tıklayınca açılıyor
+- İşlem Kayıtları **iki kez** yazıldı → son hâli: kayıt türü seç → içine gir,
+  kayıtlar **plan bazında** toplu, tekrarlar `×5` diye birleşiyor
+
+### 5.8 Ölü kod temizliği
+
+`NeedLists/index.js` ekranı (menüye bağlı değildi) silindi; `createUser`,
+`getAllUsers`, `getUserById`, `createNeedList`, `deleteNeedList`,
+`getNeedListById` uçları kaldırıldı; boş `error/` ve `shared/` klasörleri silindi.
 
 ---
 
-## 7. Kod Okuma İlerlemesi (kullanıcı için, 8-9 günlük plan)
+## 6. Rollere Göre Ekranlar (güncel)
 
-Kapsamlı bir kod rehberi hazırlanıp yayınlandı:
-**https://claude.ai/code/artifact/4fcdeaff-a665-411d-b97d-667a46c1db3f**
+| Ekran | Personel | Müdür | Şoför | Admin |
+|---|:---:|:---:|:---:|:---:|
+| İhtiyaç Oluştur | ✅ | — | — | — |
+| Mevcut İhtiyaçlar | ✅ | — | — | ✅ |
+| Mal Kabul Sayımı | ✅ | — | — | — |
+| Alım İşlemleri | — | ✅ | — | ✅ |
+| Aktif Görevler | ✅ | ✅ | ✅ | ✅ |
+| Devam Eden İşlemler | — | ✅ | — | ✅ |
+| Tamamlanan İşlemler | — | ✅ | — | ✅ |
+| Özet | — | ✅ | — | ✅ |
+| Meyve Listesi | ✅ | ✅ | ✅ | ✅ |
+| Kullanıcı Onayları | — | — | — | ✅ |
+| İşlem Kayıtları | — | — | — | ✅ |
 
-İçeriği: 30 saniyede proje özeti, her özelliğin izlediği ortak desen, 5
-aşamalı ana akışın dosya:satır haritası, kritik soru-cevaplar (planId nasıl
-doğuyor, updateNeedList akışı, şoförden fiyat nasıl gizleniyor, JWT/login,
-görev süreleri), "projenin kalbi" (ConsistencyCheckService), dosya haritası,
-8 günlük okuma planı, sunum hazırlığı (demo senaryosu + zor sorular).
-
-**Canlı, rehberli kod okuma oturumu başlatıldı** (sohbet içinde, dosya
-dosya değil "dikey dilim" mantığıyla — bir özelliği ekrandan veritabanına
-kadar takip ederek):
-
-- ✅ **Bölüm 1 — Giriş Akışı (Login) — TAMAMLANDI.** `Login/index.js` →
-  `authService.js` → `httpClient.js` → *[internet]* → `AuthController.java`
-  → `AuthService.java` zinciri, CLAUDE.md'nin istediği format (görevi / kim
-  çağırıyor / hangi dosyayı çağırıyor / endpoint / veritabanı etkisi) ile
-  satır satır anlatıldı. Kullanıcıya bunu kendi cümleleriyle anlatması
-  istendi (öğrenme kontrolü).
-- ⏳ **Bölüm 2 — İhtiyaç Planı Oluşturma** (planId'nin doğduğu yer,
-  `NeedListService.createNeedListPlan`) — sırada, henüz başlanmadı.
-- ⏳ **Bölüm 3 — Alım (müdür) + Toplama (şoför), fiyat gizleme mekanizması**
-- ⏳ **Bölüm 4 — Teslimat + Mal Kabul, görev zincirinin bir sonrakine geçişi**
-- ⏳ **Bölüm 5 — Denetim (ConsistencyCheckService) — projenin kalbi**
+Menü sırası `Home/index.js` → `ROLE_MENU_KEYS`. "Devam Eden İşlemler" bilerek
+"Tamamlanan İşlemler"in hemen üstünde.
 
 ---
 
-## 8. Sıradaki Adım
+## 7. Şartname Karşılaştırması
 
-Yeni sayfada kaldığı yerden devam edilecekse: **Bölüm 2 — İhtiyaç Planı
-Oluşturma** ile başla. Anahtar dosyalar:
+**Karşılanan zorunlu maddeler:** 3+ rol ve iş akışı · Register/Login/E-posta
+doğrulama · JWT + BCrypt · rol bazlı @PreAuthorize · 8 veri modeli · süreli
+görev atama + otomatik zincir · canlı geri sayım · gecikme cron'u · WebSocket
+anlık bildirim · AuditLog (ZORUNLU) + filtreleme · 4 aşamalı tutarlılık
+kontrolü · otomatik plan özet maili · Dashboard · fiyat geçmişi · katmanlı
+mimari + DTO + @Valid + GlobalExceptionHandler + @Transactional · Swagger · README
 
-- `frontend/src/pages/NeedListCreate/index.js`
-- `frontend/src/services/needListService.js`
-- `src/main/java/com/emre/meyvetakipsistemi/needlist/NeedListController.java`
-- `src/main/java/com/emre/meyvetakipsistemi/needlist/NeedListService.java`
-  (özellikle `createNeedListPlan` metodu, ~satır 120)
+**Eksikler:**
+1. **State yönetimi (Redux/Zustand) yok** — şartname "kurgulanmalıdır" diyor.
+   Savunulabilir: tek paylaşılan state `currentUser`, canlı akış zaten merkezi
+   `websocketService` ile çözülmüş. Eklenmesi gerekirse React Context yeterli.
+2. **TypeScript kullanılmıyor** — şartnamede "şiddetle tavsiye edilir", zorunlu değil.
+3. **E-posta doğrulama UUID link yerine 6 haneli kod** (10 dk geçerli) — sapma,
+   mobilde daha uygun, savunulabilir.
 
-Ayrıca gündemde: (a) DB şifresi ortam değişkenine taşınsın mı — kullanıcıya
-sor; (b) uygun bir noktada git commit önerilebilir (kullanıcı onayı olmadan
-commit YAPILMAZ — proje kuralı); (c) kullanıcı gerçek cihazda elle test
-etmeden "proje %100 hazır" denemeyeceği hatırlatılmalı.
+---
+
+## 8. Bilinen Açık Konular
+
+1. **DB şifresi düz metin** — `application.properties` içinde
+   `spring.datasource.password` açık. Mail ve JWT için ortam değişkeni
+   kullanılmış, bu unutulmuş. **5 dakikalık iş, yapılması öneriliyor.**
+2. **Gerçek cihazda uçtan uca test yapılmadı** — en önemli açık nokta.
+3. **Görev dağıtımı** — TOPLAMA görevi artık açık görev sayısı en az olan
+   şoföre atanıyor (`PurchaseService.pickLeastBusyDriver`); ikinci bir şoför
+   eklenirse otomatik paylaşılır. ALIM görevi hâlâ `findFirstByRoleOrderByIdAsc`
+   ile tek müdüre gidiyor — sistemde bilinçli olarak tek müdür ve tek admin
+   olacağı için bu bilinçli bir sınırlamadır.
+4. Test kullanıcıları temizlendi (13 kullanıcı → 5). Kalan `testkullanici29`
+   (id 3) silinmedi: üzerinde 2 görev kaydı var, silinirse yetim kayıt oluşurdu.
+   Doğrulanmamış olduğu için görev atama listesinde görünmüyor.
+
+---
+
+## 9. Sıradaki Adımlar (5 iş günü)
+
+| Gün | İş |
+|---|---|
+| 1 | **Uçtan uca elle test** (aşağıdaki senaryo) |
+| 1 | DB şifresini ortam değişkenine taşı |
+| 2 | Demo provası — sesli, mentöre anlatır gibi |
+| 3 | Zor sorulara hazırlık |
+| 4-5 | Buffer |
+
+**Test/demo senaryosu:** Personel ihtiyaç oluştursun → Müdür alım yapsın (arada
+ekstra ürün ekleyerek) → Müdür "Devam Eden İşlemler"den takip etsin → Şoför
+toplasın (**bilerek eksik**, 100 yerine 95) → Teslim etsin → Personel mal kabul
+yapsın (yine eksik) → Müdür "Tamamlanan İşlemler"de sonucu görsün → Admin
+"İşlem Kayıtları → Kritik ve Hatalar"da kaybın yakalandığını görsün → Mail
+geldi mi kontrol et. Arada müdür görev atasın, personel tamamlasın.
+
+**Hazır olunması gereken sorular:**
+1. *Şoför fiyatı neden göremiyor?* → `CollectionPlanItemResponse` sınıfında o
+   alanlar **hiç tanımlı değil**; gizleme kontrolü değil, olmayan şey sızamaz
+2. *planId nereden geliyor?* → Veritabanı üretir, `deliveryPlanRepository.save()` anında
+3. *Rol yetkilendirmesi nasıl?* → `@PreAuthorize` + JWT'den okunan rol + servis
+   seviyesinde sahiplik kontrolü (iki katman)
+4. *Kaybı nasıl tespit ediyorsun?* → 4 bağımsız sayım, `ConsistencyCheckService`,
+   sonuç otomatik `audit_logs`'a
+
+---
+
+## 10. Geçmişten Ders Çıkarılan Notlar
+
+- **Enum'a değer eklemek Java'da yetmez:** `ddl-auto=update` var olan CHECK
+  kısıtlarını güncellemez. Bu hata 3 kez yaşandı (`audit_logs.action_type`,
+  `task_assignments.status`, `task_assignments.task_type`). Çözüm dosyası:
+  `src/main/resources/db/migration_audit_log_action_types.sql`
+- **Küçük id'li test kullanıcısı oluşturma:** sistem görevleri en küçük id'li
+  müdür/şoföre atadığı için gerçek kullanıcının görevlerini üstüne çeker.
+  Geçmişte bir kez yaşandı, onarıldı.
+- **Log yazma ayrı transaction'da** (`AuditLogService.createLogSafely`,
+  `REQUIRES_NEW`) — bir log hatası asıl işlemi geri aldıramaz.

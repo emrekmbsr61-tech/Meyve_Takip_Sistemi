@@ -43,8 +43,12 @@ public class NeedListController {
       DeliveryPlan/ihtiyaç planı OLUŞTURMAZ; aynı planId'ye yeni NeedList
       satırları ekler (bkz. NeedListService.addExtraItemsToPlan).
     */
-    // Plana ekstra ürün ekleme müdürün işidir (Alım İşlemleri ekranından yapılır).
-    @PreAuthorize("hasRole('MAGAZA_MUDURU')")
+    /*
+      Plana ekstra ürün ekleme: müdür (Alım İşlemleri ekranından) veya personel
+      (Mevcut İhtiyaçlar ekranından, yalnızca kendi planına). Personelin
+      yalnızca kendi planına ekleyebilmesi Service'te ayrıca kontrol edilir.
+    */
+    @PreAuthorize("hasAnyRole('MAGAZA_MUDURU','MAGAZA_PERSONELI')")
     @PostMapping("/plan/{planId}/items")
     public ResponseEntity<?> addExtraItems(@PathVariable Long planId, @RequestBody AddExtraItemsRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(needListService.addExtraItemsToPlan(planId, request));
@@ -58,7 +62,14 @@ public class NeedListController {
         return ResponseEntity.ok("Plan iptal edildi");
     }
 
-    // Tüm ihtiyaç listelerini getirir.
+    /*
+      Tüm ihtiyaç listelerini getirir (Mevcut İhtiyaçlar ve Aktif Görevler ekranları).
+
+      SOFOR bilerek DIŞARIDA bırakıldı: şoförün ihtiyaç miktarlarını görmesi,
+      projenin temel kuralı olan bağımsız sayımı zayıflatır. Şoför yalnızca
+      kendisine atanan görevleri görür.
+    */
+    @PreAuthorize("hasAnyRole('MAGAZA_PERSONELI','MAGAZA_MUDURU','ADMIN')")
     @GetMapping
     public List<NeedListResponse> getAllNeedLists() {
         return needListService.getAllNeedLists();

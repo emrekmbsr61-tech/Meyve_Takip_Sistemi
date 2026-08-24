@@ -384,10 +384,7 @@ public class PurchaseService {
             return;
         }
 
-        User sofor = userRepository.findFirstByRoleOrderByIdAsc(UserRole.SOFOR)
-                .orElseThrow(() -> new RuntimeException(
-                        "Sistemde aktif şoför (SOFOR) kullanıcısı bulunamadığı için toplama görevi oluşturulamadı"
-                ));
+        User sofor = pickLeastBusyDriver();
 
         TaskAssignment toplamaTask = new TaskAssignment();
         toplamaTask.setPlanId(planId);
@@ -414,6 +411,44 @@ public class PurchaseService {
                 "TOPLAMA_GOREVI_ATANDI",
                 "Yeni toplama görevi atandı (Plan #" + planId + ")."
         );
+    }
+
+    // Henüz bitmemiş sayılan görev durumları; iş yükü bunlara göre hesaplanır.
+    // OVERDUE de dahildir: süresi geçmiş ama yapılmamış görev hâlâ o kişinin işidir.
+    private static final List<TaskStatus> OPEN_TASK_STATUSES =
+            List.of(TaskStatus.PENDING, TaskStatus.IN_PROGRESS, TaskStatus.OVERDUE);
+
+    /*
+      Toplama görevini hangi şoföre atayacağını belirler: AÇIK GÖREV SAYISI EN AZ
+      olan şoför seçilir, eşitlik durumunda id'si küçük olan.
+
+      Önceden burada findFirstByRoleOrderByIdAsc(SOFOR) vardı; yani her görev
+      HER ZAMAN en küçük id'li şoföre gidiyordu. Sisteme ikinci bir şoför
+      eklendiğinde o kişi hiçbir görev alamıyor, uygulamaya girse bile yapacak
+      işi olmuyordu (kendisine atanmayan görevi de açamaz - bkz.
+      CollectionService.requireOwnToplamaTask).
+
+      Tek şoför varken davranış öncekiyle BİREBİR aynıdır: tek aday olduğu için
+      hep o seçilir.
+
+      Yalnızca e-postasını doğrulamış şoförler aday olur; doğrulamamış hesap
+      giriş yapamadığı için kendisine atanan görev hiç görülmezdi.
+    */
+    private User pickLeastBusyDriver() {
+        List<User> drivers = userRepository.findByRoleAndIsVerifiedTrue(UserRole.SOFOR);
+
+        if (drivers.isEmpty()) {
+            throw new RuntimeException(
+                    "Sistemde aktif şoför (SOFOR) kullanıcısı bulunamadığı için toplama görevi oluşturulamadı"
+            );
+        }
+
+        return drivers.stream()
+                .min(Comparator
+                        .comparingLong((User driver) -> taskAssignmentRepository
+                                .countByAssignedUserIdAndStatusIn(driver.getId(), OPEN_TASK_STATUSES))
+                        .thenComparing(User::getId))
+                .orElseThrow();
     }
 
     // Çağıranın var olan ve MAGAZA_MUDURU rolünde bir kullanıcı olduğunu doğrular.

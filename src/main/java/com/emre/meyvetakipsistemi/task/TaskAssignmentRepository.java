@@ -18,6 +18,14 @@ public interface TaskAssignmentRepository extends JpaRepository<TaskAssignment, 
  List<TaskAssignment> findByPlanId(Long planId);
 
  /*
+   Bir kullanıcının verilen durumlardaki görev sayısı.
+
+   Toplama görevini hangi şoföre atayacağımıza karar verirken kullanılır: iş
+   yükü en az olan şoför seçilir (bkz. PurchaseService.pickLeastBusyDriver).
+ */
+ long countByAssignedUserIdAndStatusIn(Long assignedUserId, List<TaskStatus> statuses);
+
+ /*
    "Tamamlanan İşlemler" ekranı için: müdürün KENDİ atadığı, tamamlanmış
    serbest görevler (en yeniden eskiye).
  */

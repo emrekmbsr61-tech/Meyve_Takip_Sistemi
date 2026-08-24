@@ -11,8 +11,8 @@ import {
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
-import { getFruits } from "../Fruits/api";
-import { cleanQuantity, getUnitLabel, requiresWholeNumber } from "../../utils/unit";
+import { getFruits } from "../pages/Fruits/api";
+import { cleanQuantity, getUnitLabel, requiresWholeNumber } from "../utils/unit";
 
 const colors = {
   green: "#2E7D32",

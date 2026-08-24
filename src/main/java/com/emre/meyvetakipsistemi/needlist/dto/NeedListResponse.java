@@ -51,4 +51,14 @@ public class NeedListResponse {
     // Bu ikisi yalnızca kayıt gerçekten güncellenmişse dolu gelir (AuditLog'dan türetilir).
     private String updatedByName;
     private LocalDateTime updatedDate;
+
+    /*
+      Bu kayıt hâlâ düzenlenebilir mi?
+
+      Plan için ilk alım kaydı oluştuğu anda false olur: miktar değiştirilemez,
+      ürün eklenemez, plan iptal edilemez (bkz. NeedListService.requirePlanNotPurchased).
+      Frontend bu alana bakarak düzenle/sil butonlarını gizler; asıl engelleme
+      yine backend'dedir.
+    */
+    private boolean editable;
 }

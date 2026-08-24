@@ -21,7 +21,7 @@ import { getActiveSuppliers } from "../../services/supplierService";
 import { addNotificationListener } from "../../services/websocketService";
 import PurchaseItemRow from "./PurchaseItemRow";
 import SupplierPickerModal, { formatSupplierLabel } from "./SupplierPickerModal";
-import AddExtraProductModal from "./AddExtraProductModal";
+import AddExtraProductModal from "../../components/AddExtraProductModal";
 
 const colors = {
   green: "#2E7D32",
@@ -305,7 +305,7 @@ export default function PurchaseManagement({ currentUser }) {
       setExtraSaving(true);
       setExtraError("");
 
-      await addExtraItemsToPlan(selectedPlanId, { managerId: currentUser.id, items });
+      await addExtraItemsToPlan(selectedPlanId, { userId: currentUser.id, items });
 
       setExtraModalVisible(false);
       await openPlan(selectedPlanId, selectedStoreName);
