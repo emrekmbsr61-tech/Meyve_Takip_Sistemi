@@ -8,6 +8,9 @@ import { getCompletedTasks } from "../../services/taskService";
 import { getPlanSummary } from "../../services/planSummaryService";
 import PlanSummaryModal from "../NeedListList/PlanSummaryModal";
 
+// Tamamlanan görevlerden ekranda kaç tanesinin doğrudan gösterileceği.
+const VISIBLE_TASK_COUNT = 3;
+
 const colors = {
   green: "#2E7D32",
   blue: "#2364E8",
@@ -58,6 +61,13 @@ export default function CompletedAcceptances({ currentUser }) {
     ikisi farklı şeylerdir, aynı listede karıştırmak kafa karıştırırdı.
   */
   const [completedTasks, setCompletedTasks] = useState([]);
+
+  /*
+    Tamamlanan görevler zamanla birikiyor ve hepsi birden çizilince asıl içerik
+    olan mal kabul kartlarını ekranın çok aşağısına itiyordu. Bu yüzden
+    başlangıçta yalnızca ilk birkaçı gösterilir; gerisi istenirse açılır.
+  */
+  const [showAllTasks, setShowAllTasks] = useState(false);
 
   const loadItems = useCallback(async () => {
     try {
@@ -156,7 +166,7 @@ export default function CompletedAcceptances({ currentUser }) {
         <View style={styles.taskSection}>
           <Text style={styles.sectionTitle}>Tamamlanan Görevler</Text>
 
-          {completedTasks.map((task) => (
+          {(showAllTasks ? completedTasks : completedTasks.slice(0, VISIBLE_TASK_COUNT)).map((task) => (
             <View key={task.id} style={styles.taskCard}>
               <View style={styles.taskTop}>
                 <Ionicons name="checkmark-circle" size={20} color={colors.green} />
@@ -176,6 +186,24 @@ export default function CompletedAcceptances({ currentUser }) {
               <Text style={styles.taskDate}>{formatDate(task.completedAt)}</Text>
             </View>
           ))}
+
+          {completedTasks.length > VISIBLE_TASK_COUNT ? (
+            <Pressable
+              style={styles.moreButton}
+              onPress={() => setShowAllTasks((current) => !current)}
+            >
+              <Text style={styles.moreText}>
+                {showAllTasks
+                  ? "Daha az göster"
+                  : `Tümünü göster (${completedTasks.length})`}
+              </Text>
+              <Ionicons
+                name={showAllTasks ? "chevron-up" : "chevron-down"}
+                size={16}
+                color={colors.green}
+              />
+            </Pressable>
+          ) : null}
 
           {plans.length > 0 ? <Text style={styles.sectionTitle}>Tamamlanan Mal Kabuller</Text> : null}
         </View>
@@ -226,6 +254,22 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     marginBottom: 10,
     marginTop: 4,
+  },
+
+  // "Tümünü göster / Daha az göster" satırı; kart değil, sade bir bağlantı gibi durur.
+  moreButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+    marginBottom: 14,
+  },
+
+  moreText: {
+    color: colors.green,
+    fontSize: 13,
+    fontWeight: "700",
   },
   taskCard: {
     backgroundColor: colors.white,

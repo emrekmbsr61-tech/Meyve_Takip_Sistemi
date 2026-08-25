@@ -46,6 +46,7 @@ export default function Login({ onLoginSuccess, onGoToRegister }) {
     <AuthLayout
       heading="Giriş yap"
       description="Devam etmek için kullanıcı bilgilerini gir."
+      showProcess
     >
       <AuthField
         label="Kullanıcı Adı"

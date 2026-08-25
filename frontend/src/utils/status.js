@@ -25,3 +25,23 @@ export function getNeedListStatusLabel(status) {
       return status || "Bilinmiyor";
   }
 }
+
+/*
+  Plan kartındaki rozet için etiket üretir.
+
+  Neden ayrı bir fonksiyon: getNeedListStatusLabel yalnızca NeedListStatus'a
+  bakar, ama alımı yapılmış bir plan hâlâ CREATED durumunda kalır (bkz.
+  yukarıdaki teknik borç notu). Bu yüzden ekranda rozet "Alım Bekliyor" derken
+  aynı kartın altında "Alım yapıldı, bu plan artık değiştirilemez" yazıyordu.
+
+  editable alanı bu boşluğu kapatır: backend, plana ilk alım kaydı düştüğü an
+  bu alanı false yapar (bkz. NeedListService.requirePlanNotPurchased).
+  Böylece NeedListStatus enum'una dokunmadan doğru etiket gösterilir.
+*/
+export function getPlanStageLabel(status, editable) {
+  if (status === "CREATED" && editable === false) {
+    return "Alım Yapıldı";
+  }
+
+  return getNeedListStatusLabel(status);
+}

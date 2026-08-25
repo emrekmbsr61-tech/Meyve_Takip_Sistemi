@@ -6,8 +6,9 @@ import {
   Text,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import ProcessStrip from "./ProcessStrip";
 
 /*
   Giriş ve Kayıt ekranlarının ORTAK çerçevesi.
@@ -40,7 +41,20 @@ const colors = {
   edges={["top"]}: yalnızca üst güvenli alan uygulanır; alt kenara boşluk
   verilmez, çünkü beyaz form yaprağının ekranın altına kadar uzanması istenir.
 */
-export default function AuthLayout({ heading, description, children }) {
+/*
+  showProcess: yalnızca Giriş ekranı true verir. Formun altındaki boşluğa
+  dört aşamalı iş akışı şeridi çizilir. Kayıt ekranında beş alan olduğu için
+  zaten boşluk yoktur; orada bu seçenek verilmez ve ekran hiç etkilenmez.
+*/
+export default function AuthLayout({ heading, description, showProcess = false, children }) {
+  /*
+    Alt güvenli alan (Android gezinme çubuğu / iOS ana ekran çizgisi) yüksekliği.
+    Beyaz yaprağın ekranın altına kadar uzanması istendiği için SafeAreaView'a
+    "bottom" kenarı verilmez; bunun yerine boşluk yaprağın İÇİNE eklenir.
+    Aksi halde gezinme çubuğu en alttaki içeriği kapatır.
+  */
+  const insets = useSafeAreaInsets();
+
   return (
     <SafeAreaView style={styles.safeArea} edges={["top"]}>
       <KeyboardAvoidingView
@@ -63,7 +77,10 @@ export default function AuthLayout({ heading, description, children }) {
         {/* Beyaz form yaprağı */}
         <View style={styles.sheet}>
           <ScrollView
-            contentContainerStyle={styles.sheetContent}
+            contentContainerStyle={[
+              styles.sheetContent,
+              { paddingBottom: styles.sheetContent.paddingBottom + insets.bottom },
+            ]}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
@@ -74,6 +91,8 @@ export default function AuthLayout({ heading, description, children }) {
             ) : null}
 
             {children}
+
+            {showProcess ? <ProcessStrip /> : null}
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
@@ -154,6 +173,7 @@ const styles = StyleSheet.create({
     paddingTop: 26,
     paddingBottom: 34,
   },
+
 
   heading: {
     color: colors.text,

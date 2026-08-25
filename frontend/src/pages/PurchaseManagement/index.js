@@ -161,8 +161,16 @@ export default function PurchaseManagement({ currentUser }) {
     return removeListener;
   }, [loadPendingPlans, view]);
 
-  // Bir plan seçildiğinde ürünlerini getirir; yalnızca alımı yapılmamış ürünler için giriş alanı açılır.
-  const openPlan = async (planId, storeName) => {
+  /*
+    Bir plan seçildiğinde ürünlerini getirir; yalnızca alımı yapılmamış ürünler
+    için giriş alanı açılır.
+
+    keepEntries: plana ekstra ürün eklendikten sonra ekranı tazelerken true
+    verilir. O durumda müdürün ZATEN GİRDİĞİ kilo/fiyat/not değerleri korunur,
+    yalnızca yeni gelen ürün boş başlar. Varsayılan false olduğu için listeden
+    normal plan açma davranışı hiç değişmez.
+  */
+  const openPlan = async (planId, storeName, keepEntries = false) => {
     try {
       setLoading(true);
       setMessage("");
@@ -172,7 +180,10 @@ export default function PurchaseManagement({ currentUser }) {
 
       const initialValues = {};
       remainingItems.forEach((item) => {
-        initialValues[item.fruitId] = {
+        // Daha önce bu ürüne bir şey yazılmışsa ve koruma isteniyorsa aynen kalır.
+        const previous = keepEntries ? itemValues[item.fruitId] : undefined;
+
+        initialValues[item.fruitId] = previous || {
           purchasedQuantity: "",
           unitPrice: "",
           salesPrice: "",
@@ -191,8 +202,13 @@ export default function PurchaseManagement({ currentUser }) {
       setPlanChangedWarning("");
       setPlanItems(remainingItems);
       setItemValues(initialValues);
+
       // Farklı bir plana geçildiğinde önceki planın tedarikçi seçimi taşınmasın.
-      setSelectedSupplierId(null);
+      // Aynı plan tazeleniyorsa (keepEntries) seçili tedarikçi korunur.
+      if (!keepEntries) {
+        setSelectedSupplierId(null);
+      }
+
       setView("detail");
     } catch (error) {
       setMessage(error.message);
@@ -297,6 +313,9 @@ export default function PurchaseManagement({ currentUser }) {
     Seçili plana ekstra ürün ekler ve planı yeniden açar.
     Yeniden açmak şart: yeni ürün de alım formunda görünmeli, aksi halde
     "planın tüm ürünleri birlikte gönderilmelidir" kuralına takılırdı.
+
+    keepEntries = true veriliyor; aksi halde müdürün o ana kadar girdiği tüm
+    kilo ve fiyat bilgileri silinir ve baştan yazması gerekirdi.
   */
   const saveExtraItems = async (items) => {
     if (items.length === 0) return;
@@ -308,7 +327,7 @@ export default function PurchaseManagement({ currentUser }) {
       await addExtraItemsToPlan(selectedPlanId, { userId: currentUser.id, items });
 
       setExtraModalVisible(false);
-      await openPlan(selectedPlanId, selectedStoreName);
+      await openPlan(selectedPlanId, selectedStoreName, true);
     } catch (error) {
       setExtraError(error.message);
     } finally {

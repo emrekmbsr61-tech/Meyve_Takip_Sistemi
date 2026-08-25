@@ -120,56 +120,12 @@ export default function Dashboard() {
     return null;
   }
 
-  const problemCount = data.criticalIssueCount + data.warningIssueCount;
-
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      {/* Durum bandı: her şey yolunda mı, değil mi - tek bakışta */}
-      <View
-        style={[
-          styles.banner,
-          data.criticalIssueCount > 0
-            ? styles.bannerCritical
-            : problemCount > 0
-            ? styles.bannerWarning
-            : styles.bannerOk,
-        ]}
-      >
-        <Ionicons
-          name={
-            data.criticalIssueCount > 0
-              ? "alert-circle"
-              : problemCount > 0
-              ? "warning"
-              : "checkmark-circle"
-          }
-          size={26}
-          color={colors.white}
-        />
-
-        <View style={styles.bannerTextArea}>
-          <Text style={styles.bannerTitle}>
-            {data.criticalIssueCount > 0
-              ? "Kayıp şüphesi var"
-              : problemCount > 0
-              ? "Dikkat edilmesi gereken farklar var"
-              : "Her şey yolunda"}
-          </Text>
-
-          <Text style={styles.bannerSubtitle}>
-            {data.criticalIssueCount > 0
-              ? `${data.criticalIssueCount} kritik, ${data.warningIssueCount} uyarı`
-              : problemCount > 0
-              ? `${data.warningIssueCount} uyarı`
-              : "Miktar farkı tespit edilmedi"}
-          </Text>
-        </View>
-      </View>
-
       {/* Temel sayılar */}
       <Text style={styles.sectionTitle}>Durum</Text>
 
@@ -339,21 +295,6 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   errorText: { color: colors.gray, textAlign: "center" },
-
-  banner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 20,
-  },
-  bannerOk: { backgroundColor: colors.green },
-  bannerWarning: { backgroundColor: colors.orange },
-  bannerCritical: { backgroundColor: colors.red },
-  bannerTextArea: { flex: 1 },
-  bannerTitle: { color: colors.white, fontSize: 17, fontWeight: "800" },
-  bannerSubtitle: { color: colors.white, fontSize: 13, marginTop: 3, opacity: 0.9 },
 
   sectionTitle: {
     color: colors.text,

@@ -5,7 +5,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { addExtraItemsToPlan, cancelNeedListPlan, getNeedLists, updateNeedList } from "../../services/needListService";
 import { getUnitLabel } from "../../utils/unit";
-import { getNeedListStatusLabel } from "../../utils/status";
+import { getPlanStageLabel } from "../../utils/status";
 import { addNotificationListener } from "../../services/websocketService";
 import AddExtraProductModal from "../../components/AddExtraProductModal";
 
@@ -184,7 +184,7 @@ export default function NeedListList({ currentUser }) {
     {!loading && plans.length === 0 ? <View style={styles.empty}><Ionicons name="clipboard-outline" size={42} color={colors.muted}/><Text style={styles.emptyTitle}>Aktif ihtiyaç planı yok</Text><Text style={styles.emptyText}>Tamamlanan planları "Tamamlanan İşlemler" ekranından görebilirsiniz.</Text></View> : null}
     {visiblePlans.map((plan) => {
       return <View key={plan.planId} style={styles.card}>
-      <View style={styles.cardHeader}><View style={{ flex: 1 }}><Text style={styles.storeName}>{plan.storeName}</Text><Text style={styles.planMeta}>Plan #{plan.planId} · {formatDate(plan.createdDate)}</Text></View><View style={styles.statusBadge}><Text style={styles.statusText}>{getNeedListStatusLabel(plan.status)}</Text></View></View>
+      <View style={styles.cardHeader}><View style={{ flex: 1 }}><Text style={styles.storeName}>{plan.storeName}</Text><Text style={styles.planMeta}>Plan #{plan.planId} · {formatDate(plan.createdDate)}</Text></View><View style={styles.statusBadge}><Text style={styles.statusText}>{getPlanStageLabel(plan.status, plan.editable)}</Text></View></View>
       <View style={styles.personRow}><Ionicons name="person-outline" size={16} color={colors.muted}/><Text style={styles.personText}>{plan.createdByName}</Text><Ionicons name="cube-outline" size={16} color={colors.muted}/><Text style={styles.personText}>{plan.items.length} ürün</Text></View>
 
       <View style={styles.divider}/>
